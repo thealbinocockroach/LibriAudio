@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "LibriAudio",
+    "slug": "libriaudio",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "libriaudio",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "com.libriaudio.app",
+      "versionCode": 1
+    },
+    "plugins": ["expo-audio"]
+  }
+}
