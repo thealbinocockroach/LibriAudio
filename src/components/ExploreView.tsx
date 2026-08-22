@@ -51,6 +51,19 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const [isLoadingSections, setIsLoadingSections] = useState(false);
   const [surpriseBook, setSurpriseBook] = useState<Audiobook | null>(null);
   const [isRollingSurprise, setIsRollingSurprise] = useState(false);
+  const [profileName, setProfileName] = useState<string>('');
+
+  useEffect(() => {
+    const savedName = localStorage.getItem('libriaudio_profile_name');
+    if (savedName) setProfileName(savedName);
+  }, []);
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  };
 
   // Featured book (either dynamic top pick or first in books)
   const featuredBook = surpriseBook || (genreBooks.length > 0 ? genreBooks[0] : books[0]);
@@ -154,14 +167,16 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-serif-display italic font-bold text-white tracking-wide leading-tight">
-              LibriAudio Discover
+              {profileName ? `${getGreeting()}, ${profileName}` : 'LibriAudio Discover'}
             </h1>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-widest bg-[#C5A059]/15 text-[#C5A059] border border-[#C5A059]/30">
-              <Radio className="w-2.5 h-2.5 animate-pulse text-[#C5A059]" /> LibriVox Live
-            </span>
+            {!profileName && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-widest bg-[#C5A059]/15 text-[#C5A059] border border-[#C5A059]/30">
+                <Radio className="w-2.5 h-2.5 animate-pulse text-[#C5A059]" /> LibriVox Live
+              </span>
+            )}
           </div>
           <p className="text-xs text-white/50 font-serif-display italic mt-0.5">
-            Dynamic recommendations curated from the LibriVox and Internet Archive catalog
+            {profileName ? 'Dynamic recommendations curated from the LibriVox and Internet Archive catalog' : 'Personalize your experience in Settings'}
           </p>
         </div>
 
@@ -202,82 +217,104 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                 setSelectedGenre(genre);
                 setSurpriseBook(null);
               }}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${
+              className={`px-4 py-1.5 rounded-full text-xs font-sans transition-all flex items-center shrink-0 ${
                 isActive
-                  ? 'bg-[#C5A059] text-black font-semibold shadow-md shadow-[#C5A059]/20'
-                  : 'bg-white/[0.04] text-white/70 hover:text-white hover:bg-white/[0.08] border border-white/10'
+                  ? 'bg-white text-black font-semibold'
+                  : 'bg-white/5 text-white/70 hover:text-white hover:bg-white/10'
               }`}
             >
-              {genre.id === 'all' && <Sparkles className="w-3 h-3" />}
-              {genre.id === 'mystery' && <Search className="w-3 h-3" />}
-              {genre.id === 'gothic' && <Flame className="w-3 h-3" />}
-              <span>{genre.label}</span>
+              {genre.label}
             </button>
           );
         })}
       </div>
+
+      {/* Continue Listening Hero */}
+      {history.length > 0 && (
+        <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <h3 className="text-sm font-semibold text-white/70 uppercase tracking-wider mb-3 px-1 flex items-center gap-2">
+            Jump Back In
+          </h3>
+          <div 
+            onClick={() => handleBookClick(history[0])}
+            className="flex items-center gap-4 p-3 sm:p-4 rounded-xl bg-[#111111] hover:bg-[#1a1a1a] border border-white/5 transition-all cursor-pointer group"
+          >
+            <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden bg-[#1a1a1a]">
+              <img 
+                src={history[0].coverImageUrl} 
+                alt={history[0].title}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-base font-serif-display italic font-semibold text-white group-hover:text-[#C5A059] transition-colors truncate">
+                {history[0].title}
+              </h4>
+              <p className="text-xs text-white/50 truncate mt-0.5">
+                {history[0].author}
+              </p>
+            </div>
+            <button className="flex items-center justify-center w-10 h-10 rounded-full bg-[#C5A059] text-black hover:bg-[#d4af65] transition-colors shadow-sm shrink-0 mr-2">
+              <Play className="w-4 h-4 fill-current ml-0.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Featured Pick Hero Banner */}
       {featuredBook && (
         <div
           id={`featured-card-${featuredBook.id}`}
           onClick={() => handleBookClick(featuredBook)}
-          className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1c1913] via-[#121212] to-[#0a0a0a] border border-[#C5A059]/40 p-4 sm:p-5 mb-8 shadow-2xl shadow-black/80 cursor-pointer group hover:border-[#C5A059]/70 transition-all duration-300"
+          className="relative overflow-hidden rounded-2xl bg-[#111] border border-white/5 p-4 sm:p-5 mb-8 cursor-pointer group hover:bg-[#151515] hover:border-white/10 transition-all duration-300"
         >
-          <div className="absolute top-0 right-0 w-56 h-56 bg-[#C5A059]/15 rounded-full blur-3xl pointer-events-none" />
-
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 relative z-10">
             {/* Book Cover */}
-            <div className="relative w-24 sm:w-32 aspect-[3/4] shrink-0 rounded-xl overflow-hidden shadow-2xl shadow-black border border-white/15 bg-[#181818]">
+            <div className="relative w-24 sm:w-32 aspect-[3/4] shrink-0 rounded-xl overflow-hidden shadow-lg border border-white/5 bg-[#181818]">
               <img
                 src={featuredBook.coverImageUrl}
                 alt={featuredBook.title}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 referrerPolicy="no-referrer"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end justify-center pb-2">
-                <span className="text-[10px] font-semibold text-white/90 bg-black/70 px-2 py-0.5 rounded-full backdrop-blur-sm border border-white/15">
-                  {featuredBook.tracks.length} {featuredBook.tracks.length === 1 ? 'Ch.' : 'Chapters'}
-                </span>
-              </div>
             </div>
 
             {/* Book Details */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#C5A059]/20 border border-[#C5A059]/40 text-[10px] font-bold text-[#C5A059] uppercase tracking-wider">
-                  <Sparkles className="w-3 h-3" />
+                <span className="text-[10px] font-bold text-[#C5A059] uppercase tracking-wider">
                   {surpriseBook ? 'Surprise Discovery' : selectedGenre.id !== 'all' ? selectedGenre.label : 'Featured Classic'}
                 </span>
                 {featuredBook.reader && (
                   <span className="text-[11px] text-white/40 flex items-center gap-1 truncate">
-                    <User className="w-3 h-3 text-[#C5A059]" /> {featuredBook.reader}
+                    • {featuredBook.reader}
                   </span>
                 )}
               </div>
 
-              <h2 className="text-lg sm:text-xl font-serif-display italic font-bold text-white group-hover:text-[#C5A059] transition-colors leading-tight">
+              <h2 className="text-lg sm:text-2xl font-serif-display italic font-bold text-white group-hover:text-[#C5A059] transition-colors leading-tight">
                 {featuredBook.title}
               </h2>
-              <p className="text-xs sm:text-sm text-[#C5A059] font-serif-display italic font-medium mt-0.5">
+              <p className="text-xs sm:text-sm text-white/50 font-sans mt-0.5">
                 {featuredBook.author}
               </p>
 
-              <p className="text-xs text-white/60 line-clamp-2 sm:line-clamp-3 mt-2 leading-relaxed max-w-2xl">
+              <p className="text-xs text-white/60 line-clamp-2 sm:line-clamp-3 mt-3 leading-relaxed max-w-2xl">
                 {featuredBook.description}
               </p>
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-3 mt-4 pt-1">
+              <div className="flex items-center gap-3 mt-4">
                 <button
                   id={`btn-play-featured-${featuredBook.id}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleBookClick(featuredBook);
                   }}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#C5A059] hover:bg-[#d4af65] text-black text-xs font-bold shadow-[0_0_20px_rgba(197,160,89,0.35)] transition-all active:scale-95"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white hover:bg-gray-200 text-black text-xs font-bold transition-all active:scale-95"
                 >
-                  <Play className="w-3.5 h-3.5 fill-current" /> Listen Now
+                  <Play className="w-3.5 h-3.5 fill-current" /> Listen
                 </button>
 
                 {onReadBook && (
@@ -287,16 +324,11 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                       e.stopPropagation();
                       onReadBook(featuredBook);
                     }}
-                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/[0.06] hover:bg-[#C5A059]/20 text-white/90 hover:text-[#C5A059] border border-white/10 hover:border-[#C5A059]/40 text-xs font-semibold transition-all active:scale-95"
+                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/90 text-xs font-semibold transition-all active:scale-95"
                   >
-                    <BookOpen className="w-3.5 h-3.5 text-[#C5A059]" /> Read Ebook
+                    <BookOpen className="w-3.5 h-3.5" /> Read
                   </button>
                 )}
-
-                <div className="flex items-center gap-1.5 text-xs text-white/40 ml-auto font-mono">
-                  <Clock className="w-3.5 h-3.5 text-[#C5A059]" />
-                  <span>{Math.round(featuredBook.totalTimeSecs / 3600)}h</span>
-                </div>
               </div>
             </div>
           </div>

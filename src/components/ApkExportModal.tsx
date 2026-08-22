@@ -57,7 +57,7 @@ export const ApkExportModal: React.FC<ApkExportModalProps> = ({ isOpen, onClose 
       setDownloadSuccess(true);
       setTimeout(() => setDownloadSuccess(false), 4000);
     } catch (err) {
-      console.error('Failed to generate ZIP archive:', err);
+      console.warn('Failed to generate ZIP archive:', err);
     } finally {
       setIsZipping(false);
     }

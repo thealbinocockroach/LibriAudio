@@ -241,125 +241,29 @@ Near the door stood a bowl filled with fresh milk, in which floated small pieces
   },
 };
 
-/**
- * Dynamically resolves real verbatim ebook transcripts for any audiobook.
- * Uses LibriVox / Internet Archive metadata & Project Gutenberg API with clean fallback.
- */
-export async function getEbookForBook(
-  bookId: string,
-  title?: string,
-  author?: string
-): Promise<EbookChapter[]> {
-  // 1. Check direct curated cache
-  if (CLASSIC_EBOOKS[bookId]) {
-    return CLASSIC_EBOOKS[bookId].chapters;
-  }
-
-  const cleanTitle = (title || '').toLowerCase().trim();
-
-  // 2. Check title matching against known masterworks
-  for (const [id, data] of Object.entries(CLASSIC_EBOOKS)) {
-    if (id === '47' && cleanTitle.includes('sherlock')) return data.chapters;
-    if (id === '12' && (cleanTitle.includes('pride') || cleanTitle.includes('prejudice'))) return data.chapters;
-    if (id === '52' && cleanTitle.includes('frankenstein')) return data.chapters;
-    if (id === '19' && cleanTitle.includes('time machine')) return data.chapters;
-    if (id === '25' && cleanTitle.includes('dorian gray')) return data.chapters;
-    if (id === '88' && cleanTitle.includes('metamorphosis')) return data.chapters;
-  }
-
-  // 3. Dynamic LibriVox / Internet Archive metadata & text extraction
+export async function getEbookCloudUrl(title: string): Promise<string | null> {
   try {
-    const archiveMetaUrl = `https://archive.org/metadata/${bookId}`;
-    const res = await fetch(archiveMetaUrl);
-    if (res.ok) {
-      const data = await res.json();
-      const meta = data.metadata || {};
-      const description = meta.description
-        ? meta.description.replace(/<[^>]*>/g, '').trim()
-        : '';
-      const files: any[] = data.files || [];
-
-      // Look for audio files to build real chapter titles from LibriVox recording
-      const audioFiles = files
-        .filter((f) => f.name && f.name.endsWith('.mp3') && !f.name.includes('_vbr'))
-        .sort((a, b) => (parseInt(a.track || '0', 10) || 0) - (parseInt(b.track || '0', 10) || 0));
-
-      if (audioFiles.length > 0) {
-        const generatedChapters: EbookChapter[] = audioFiles.map((file, idx) => {
-          const chapterTitle =
-            file.title ||
-            file.name.replace('.mp3', '').replace(/_/g, ' ').replace(/^[0-9]+[_\s-]*/, '');
-
-          // Construct genuine LibriVox chapter transcript view with recording notes
-          return {
-            id: `ia_${bookId}_ch_${idx + 1}`,
-            title: chapterTitle || `Chapter ${idx + 1}`,
-            trackId: `ia_${bookId}_01`,
-            content: `LibriVox Recording: ${title || 'Classic Work'}
-Author: ${author || meta.creator || 'Classic Author'}
-Section: ${chapterTitle || `Part ${idx + 1}`}
-Reader: ${file.artist || meta.reader || 'LibriVox Volunteer'}
-
----
-
-${description ? `[Recording Synopsis]\n${description}\n\n` : ''}This audio track is recorded from the public domain edition of the text (available via Project Gutenberg and Internet Archive). Follow along with the audio playback using the bottom audio engine controls.`,
-          };
-        });
-
-        if (generatedChapters.length > 0) {
-          return generatedChapters;
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('[Ebook resolver] Archive fetch failed:', err);
-  }
-
-  // 4. Gutenberg API Fallback
-  try {
-    const searchUrl = `https://gutendex.com/books/?search=${encodeURIComponent(cleanTitle)}`;
+    const cleanTitle = (title || '').toLowerCase().trim();
+    const searchUrl = `/api/gutenberg/search?q=${encodeURIComponent(cleanTitle)}`;
     const res = await fetch(searchUrl);
     if (res.ok) {
       const gutData = await res.json();
       if (gutData.results && gutData.results.length > 0) {
         const topMatch = gutData.results[0];
-        const textPlainUrl =
+        // Prefer HTML format for web reading, fallback to plain text
+        const webUrl =
+          topMatch.formats['text/html'] ||
           topMatch.formats['text/plain; charset=utf-8'] ||
-          topMatch.formats['text/plain; charset=us-ascii'];
-
-        if (textPlainUrl) {
-          // If we have a direct Gutenberg plaintext URL, fetch sample
-          const textRes = await fetch(textPlainUrl);
-          if (textRes.ok) {
-            const rawText = await textRes.text();
-            // Split into chapters by regex
-            const rawChapters = rawText.split(/(?:CHAPTER|Chapter|SECTION|Section)\s+[0-9IVXLCDM]+/);
-            if (rawChapters.length > 1) {
-              return rawChapters.slice(1, 10).map((chText, i) => ({
-                id: `gut_${bookId}_ch_${i + 1}`,
-                title: `Chapter ${i + 1}`,
-                content: chText.trim().slice(0, 4000),
-              }));
-            }
-          }
+          topMatch.formats['text/plain; charset=us-ascii'] ||
+          topMatch.formats['text/plain'];
+        if (webUrl) {
+          return webUrl;
         }
       }
     }
   } catch (e) {
-    console.warn('[Ebook resolver] Gutendex fetch fallback:', e);
+    console.warn('[Ebook resolver] Cloud URL fetch failed:', e);
   }
-
-  // 5. Final authentic fallback derived from book metadata
-  return [
-    {
-      id: `fallback_${bookId}_01`,
-      title: `${title || 'Classic Work'} - Full Edition`,
-      content: `LibriVox Audio Edition: "${title || 'Classic Work'}"
-By ${author || 'Public Domain Author'}
-
-This work is in the public domain and recorded by volunteer narrators worldwide at LibriVox.org.
-
-You can listen to all chapters and tracks directly through LibriAudio. Use the synchronized audio controls to play, pause, set bookmarks, or adjust playback speeds.`,
-    },
-  ];
+  return null;
 }
+

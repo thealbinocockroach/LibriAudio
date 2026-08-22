@@ -60,7 +60,7 @@ export const OfflineManagerModal: React.FC<OfflineManagerModalProps> = ({
       });
       await loadData();
     } catch (e) {
-      console.error('Download failed:', e);
+      console.warn('Download failed:', e);
     } finally {
       setDownloadingBookId(null);
       setDownloadProgress(0);

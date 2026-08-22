@@ -14,6 +14,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { formatBytes } from '../utils/offlineStorage';
+import { ListeningHabitsChart } from './ListeningHabitsChart';
 
 interface LibraryViewProps {
   history: Audiobook[];
@@ -64,6 +65,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           <HardDrive className="w-3 h-3" />
           <span>Storage</span>
         </button>
+      </div>
+
+      <div className="mb-6">
+        <ListeningHabitsChart />
       </div>
 
       {/* Library Sub-Navigation Tabs */}

@@ -16,7 +16,7 @@ import {
   Share2,
 } from 'lucide-react';
 import { resolveFullTracklist } from '../utils/librivoxRecommendations';
-import { downloadAudiobookForOffline, isBookOfflineReady } from '../utils/offlineStorage';
+import { downloadAudiobook, isBookOfflineReady } from '../utils/offlineStorage';
 
 interface BookDetailModalProps {
   isOpen: boolean;
@@ -90,8 +90,8 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
     if (isOffline || isDownloading) return;
     setIsDownloading(true);
     try {
-      await downloadAudiobookForOffline(currentActiveBook, (p) => {
-        setDownloadProgress(p.progressPercentage);
+      await downloadAudiobook(currentActiveBook, (p) => {
+        setDownloadProgress(p);
       });
       setIsOffline(true);
     } catch (e) {

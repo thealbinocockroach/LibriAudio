@@ -67,6 +67,27 @@ export const LIBRIVOX_GENRES: GenreCategory[] = [
     query: '"jane austen" OR "wuthering heights" OR "jane eyre" OR "bronte" OR "sense and sensibility"',
     description: 'Passionate period dramas, social critiques, and enduring romances',
   },
+  {
+    id: 'poetry',
+    label: 'Poetry',
+    iconName: 'Feather',
+    query: 'shakespeare OR whitman OR dickinson OR "edgar allan poe" OR poetry',
+    description: 'Classic verses and timeless poetry collections'
+  },
+  {
+    id: 'history',
+    label: 'History & Biographies',
+    iconName: 'Landmark',
+    query: 'gibbon OR "julius caesar" OR lincoln OR churchill OR history',
+    description: 'Real accounts, historical records, and biographies'
+  },
+  {
+    id: 'comedy',
+    label: 'Comedy & Satire',
+    iconName: 'Smile',
+    query: 'twain OR "oscar wilde" OR "pg wodehouse" OR satire OR humor',
+    description: 'Witty plays, satirical novels, and classic humor'
+  }
 ];
 
 // Helper to convert runtime string like "05:24:12" or "124:32" into total seconds

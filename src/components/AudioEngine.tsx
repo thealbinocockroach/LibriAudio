@@ -56,6 +56,7 @@ export const AudioEngine: React.FC<AudioEngineProps> = ({
     if (!track) return;
 
     let isSubscribed = true;
+    let createdOfflineUrl: string | null = null;
 
     async function loadAudioSource() {
       let finalUrl = track!.audioUrl;
@@ -65,6 +66,10 @@ export const AudioEngine: React.FC<AudioEngineProps> = ({
         const offlineUrl = await getOfflineAudioTrackUrl(book.id, track!.id);
         if (offlineUrl && isSubscribed) {
           finalUrl = offlineUrl;
+          createdOfflineUrl = offlineUrl;
+        } else if (offlineUrl) {
+          // If we are no longer subscribed, but we created a url, we must revoke it to avoid leaks
+          URL.revokeObjectURL(offlineUrl);
         }
       }
 
@@ -86,6 +91,9 @@ export const AudioEngine: React.FC<AudioEngineProps> = ({
 
     return () => {
       isSubscribed = false;
+      if (createdOfflineUrl) {
+        URL.revokeObjectURL(createdOfflineUrl);
+      }
     };
   }, [playerState.currentTrack?.id, playerState.currentBook?.id]);
 

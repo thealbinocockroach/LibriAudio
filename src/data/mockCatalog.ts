@@ -10,6 +10,7 @@ export const INITIAL_AUDIOBOOKS: Audiobook[] = [
     language: 'English',
     totalTimeSecs: 39120,
     reader: 'David Clarke',
+    gutenbergId: 1661,
     tracks: [
       {
         id: 'sh_01',
@@ -43,6 +44,7 @@ export const INITIAL_AUDIOBOOKS: Audiobook[] = [
     language: 'English',
     totalTimeSecs: 37440,
     reader: 'Karen Savage',
+    gutenbergId: 1342,
     tracks: [
       {
         id: 'pp_01',
@@ -69,6 +71,7 @@ export const INITIAL_AUDIOBOOKS: Audiobook[] = [
     language: 'English',
     totalTimeSecs: 28800,
     reader: 'Glen Hallstrom',
+    gutenbergId: 84,
     tracks: [
       {
         id: 'fr_01',
@@ -95,6 +98,7 @@ export const INITIAL_AUDIOBOOKS: Audiobook[] = [
     language: 'English',
     totalTimeSecs: 13200,
     reader: 'Cliff Stone',
+    gutenbergId: 35,
     tracks: [
       {
         id: 'tm_01',
@@ -114,6 +118,7 @@ export const INITIAL_AUDIOBOOKS: Audiobook[] = [
     language: 'English',
     totalTimeSecs: 29500,
     reader: 'Bob Neufeld',
+    gutenbergId: 174,
     tracks: [
       {
         id: 'dg_01',
@@ -133,12 +138,53 @@ export const INITIAL_AUDIOBOOKS: Audiobook[] = [
     language: 'English',
     totalTimeSecs: 9400,
     reader: 'David Barnes',
+    gutenbergId: 5200,
     tracks: [
       {
         id: 'kafka_01',
         title: 'Section 1',
         audioUrl: 'https://www.archive.org/download/metamorphosis_librivox/metamorphosis_01_kafka_64kb.mp3',
         durationSeconds: 1820,
+        trackNumber: 1,
+      },
+    ],
+  },
+  {
+    id: '150',
+    title: 'Dracula',
+    author: 'Bram Stoker',
+    description: 'The terrifying classic epistolary novel detailing Count Dracula\'s attempt to move from Transylvania to England so he may find new blood and spread the undead curse.',
+    coverImageUrl: 'https://images.unsplash.com/photo-1626244686419-482a5223abf6?auto=format&fit=crop&q=80&w=800',
+    language: 'English',
+    totalTimeSecs: 56400,
+    reader: 'Multiple Readers',
+    gutenbergId: 345,
+    tracks: [
+      {
+        id: 'dracula_01',
+        title: 'Chapter 01',
+        audioUrl: 'https://www.archive.org/download/dracula_librivox/dracula_01_stoker_64kb.mp3',
+        durationSeconds: 1950,
+        trackNumber: 1,
+      },
+    ],
+  },
+  {
+    id: '201',
+    title: 'Leaves of Grass',
+    author: 'Walt Whitman',
+    description: 'A poetry collection reflecting on nature, the human spirit, and the vast landscapes of America in free verse.',
+    coverImageUrl: 'https://images.unsplash.com/photo-1505322022379-7c3353ee6291?auto=format&fit=crop&q=80&w=800',
+    language: 'English',
+    totalTimeSecs: 14200,
+    reader: 'Alan Davis-Drake',
+    gutenbergId: 1322,
+    tracks: [
+      {
+        id: 'leaves_01',
+        title: 'Song of Myself, Part 1',
+        audioUrl: 'https://www.archive.org/download/leaves_of_grass_librivox/leavesofgrass_01_whitman_64kb.mp3',
+        durationSeconds: 1120,
         trackNumber: 1,
       },
     ],

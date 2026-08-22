@@ -142,11 +142,17 @@ export async function downloadAudiobook(
     const trackKey = `${book.id}_${track.id}`;
 
     try {
-      // Fetch audio binary
-      const response = await fetch(track.audioUrl, { mode: 'cors' });
-      if (!response.ok) {
-        throw new Error(`Failed to fetch track: ${response.statusText}`);
+      // Fetch audio binary, first directly
+      let response = await fetch(track.audioUrl, { mode: 'cors' }).catch(() => null);
+      
+      // If CORS blocks it or it fails, fallback to our backend proxy
+      if (!response || !response.ok) {
+        response = await fetch(`/api/proxy-audio?url=${encodeURIComponent(track.audioUrl)}`);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch track via proxy: ${response.statusText}`);
+        }
       }
+      
       const blob = await response.blob();
       totalBytes += blob.size;
 
@@ -186,24 +192,8 @@ export async function downloadAudiobook(
         tx.onerror = () => resolve();
       });
     } catch (err) {
-      console.error(`Error downloading track ${track.title}:`, err);
-      // Even if network blocks direct fetch (CORS proxy fallback), we simulate the cached package
-      // so user can test full offline experience smoothly
-      const fallbackBlob = new Blob([`LibriAudio Offline Cached Track: ${track.title}`], { type: 'audio/mp3' });
-      totalBytes += fallbackBlob.size;
-
-      await new Promise<void>((resolve) => {
-        const tx = db.transaction(STORE_TRACKS, 'readwrite');
-        tx.objectStore(STORE_TRACKS).put({
-          trackKey,
-          bookId: book.id,
-          trackId: track.id,
-          blob: fallbackBlob,
-          sizeBytes: fallbackBlob.size,
-        });
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => resolve();
-      });
+      console.error('Track download failed:', err);
+      throw err;
     }
   }
 
@@ -255,7 +245,7 @@ export async function deleteDownloadedBook(bookId: string): Promise<void> {
       }
     };
   } catch (e) {
-    console.error('Error deleting downloaded book:', e);
+    console.warn('Error deleting downloaded book:', e);
   }
 }
 

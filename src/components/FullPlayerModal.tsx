@@ -217,7 +217,9 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
             max={currentDuration || 100}
             value={currentTime}
             onChange={(e) => onSeek(Number(e.target.value))}
-            className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#C5A059] hover:accent-[#d4af65] transition-all"
+            className={`w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer transition-all ${
+              isPlaying ? 'accent-emerald-500 hover:accent-emerald-400' : 'accent-[#C5A059] hover:accent-[#d4af65]'
+            }`}
           />
           <div className="flex justify-between text-[10px] tracking-wider text-white/40 font-mono">
             <span>{formatTime(currentTime)}</span>
@@ -388,8 +390,8 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
         >
           <div className="flex items-center justify-between pb-3 border-b border-white/10">
             <div className="flex items-center gap-2">
-              <ListMusic className="w-4 h-4 text-[#C5A059]" />
-              <h3 className="font-serif-display italic font-semibold text-sm text-white">Chapters & Sections</h3>
+               <ListMusic className="w-4 h-4 text-[#C5A059]" />
+               <h3 className="font-serif-display italic font-semibold text-sm text-white">Chapters & Sections</h3>
             </div>
             <button
               id="btn-close-chapters"

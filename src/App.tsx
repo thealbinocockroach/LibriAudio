@@ -4,9 +4,10 @@ import { Audiobook, PlayerState, Bookmark as BookmarkType, OfflineBookData, Voic
 import { ExploreView } from './components/ExploreView';
 import { SearchView } from './components/SearchView';
 import { LibraryView } from './components/LibraryView';
+import { SettingsView } from './components/SettingsView';
 import { MiniPlayerWidget } from './components/MiniPlayerWidget';
 import { FullPlayerModal } from './components/FullPlayerModal';
-import { EbookReaderModal } from './components/EbookReaderModal';
+import { GutenbergReaderModal } from './components/GutenbergReaderModal';
 import { AudioEngine } from './components/AudioEngine';
 import { SleepTimerModal } from './components/SleepTimerModal';
 import { VoiceEnhancerModal } from './components/VoiceEnhancerModal';
@@ -16,6 +17,7 @@ import { OfflineManagerModal } from './components/OfflineManagerModal';
 import { BookDetailModal } from './components/BookDetailModal';
 import { getAllOfflineBooks, isBookOfflineReady } from './utils/offlineStorage';
 import { resolveFullTracklist } from './utils/librivoxRecommendations';
+import { getEbookCloudUrl } from './data/ebookData';
 import {
   Compass,
   Search,
@@ -23,10 +25,11 @@ import {
   Moon,
   Headphones,
   HardDrive,
+  Settings,
 } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'explore' | 'search' | 'library'>('explore');
+  const [activeTab, setActiveTab] = useState<'explore' | 'search' | 'library' | 'settings'>('explore');
   const [showFullPlayer, setShowFullPlayer] = useState(false);
   const [showEbookReader, setShowEbookReader] = useState(false);
   const [readingBook, setReadingBook] = useState<Audiobook | null>(INITIAL_AUDIOBOOKS[0]);
@@ -46,32 +49,42 @@ export default function App() {
   const [offlineBooks, setOfflineBooks] = useState<OfflineBookData[]>([]);
   const [isCurrentBookOffline, setIsCurrentBookOffline] = useState(false);
 
+  const loadState = () => {
+    try {
+      const saved = localStorage.getItem('libriaudio_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          history: parsed.history || [],
+          savedBooks: parsed.savedBooks || [],
+          bookmarks: parsed.bookmarks || [],
+        };
+      }
+    } catch (e) {}
+    return {
+      history: [INITIAL_AUDIOBOOKS[0]],
+      savedBooks: [INITIAL_AUDIOBOOKS[1]],
+      bookmarks: []
+    };
+  };
+
+  const loadedInitialState = loadState();
+
   // Player State
   const [playerState, setPlayerState] = useState<PlayerState>({
-    currentBook: INITIAL_AUDIOBOOKS[0],
-    currentTrack: INITIAL_AUDIOBOOKS[0].tracks[0] || null,
+    currentBook: loadedInitialState.history.length > 0 ? loadedInitialState.history[0] : INITIAL_AUDIOBOOKS[0],
+    currentTrack: loadedInitialState.history.length > 0 ? loadedInitialState.history[0].tracks[0] : INITIAL_AUDIOBOOKS[0].tracks[0] || null,
     currentTrackIndex: 0,
     isPlaying: false,
     isBuffering: false,
     currentTime: 0,
-    duration: INITIAL_AUDIOBOOKS[0].tracks[0]?.durationSeconds || INITIAL_AUDIOBOOKS[0].totalTimeSecs || 1800,
+    duration: loadedInitialState.history.length > 0 ? (loadedInitialState.history[0].tracks[0]?.durationSeconds || loadedInitialState.history[0].totalTimeSecs || 1800) : (INITIAL_AUDIOBOOKS[0].tracks[0]?.durationSeconds || INITIAL_AUDIOBOOKS[0].totalTimeSecs || 1800),
     playbackSpeed: 1.0,
     volume: 1.0,
     isMuted: false,
-    history: [INITIAL_AUDIOBOOKS[0]],
-    savedBooks: [INITIAL_AUDIOBOOKS[1]],
-    bookmarks: [
-      {
-        id: 'bm_sample_1',
-        bookId: INITIAL_AUDIOBOOKS[0].id,
-        bookTitle: INITIAL_AUDIOBOOKS[0].title,
-        trackIndex: 0,
-        trackTitle: INITIAL_AUDIOBOOKS[0].tracks[0]?.title || 'Chapter 1',
-        timestamp: 142,
-        note: 'Famous opening: "Call me Ishmael."',
-        createdAt: Date.now() - 3600000,
-      },
-    ],
+    history: loadedInitialState.history,
+    savedBooks: loadedInitialState.savedBooks,
+    bookmarks: loadedInitialState.bookmarks,
     sleepTimer: {
       isActive: false,
       totalSeconds: 0,
@@ -82,6 +95,16 @@ export default function App() {
     voiceEnhancer: 'off',
     isOfflineOnly: false,
   });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('libriaudio_state', JSON.stringify({
+        history: playerState.history.slice(0, 50), // keep last 50
+        savedBooks: playerState.savedBooks,
+        bookmarks: playerState.bookmarks
+      }));
+    } catch (e) {}
+  }, [playerState.history, playerState.savedBooks, playerState.bookmarks]);
 
   // Sync offline status
   useEffect(() => {
@@ -94,7 +117,7 @@ export default function App() {
           setIsCurrentBookOffline(isReady);
         }
       } catch (err) {
-        console.error('Failed to load offline list:', err);
+        console.warn('Failed to load offline list:', err);
       }
     };
     refreshOfflineList();
@@ -384,7 +407,7 @@ export default function App() {
     : false;
 
   return (
-    <div id="libriaudio-app-root" className="h-screen w-screen bg-[#070707] text-[#E0E0E0] flex flex-col font-sans overflow-hidden antialiased">
+    <div id="libriaudio-app-root" className="fixed inset-0 bg-[#070707] text-[#E0E0E0] flex flex-col font-sans overflow-hidden antialiased">
       {/* Background Audio Engine */}
       <AudioEngine
         playerState={playerState}
@@ -507,6 +530,9 @@ export default function App() {
                   />
                 </div>
               )}
+              {activeTab === 'settings' && (
+                <SettingsView />
+              )}
             </>
           )}
         </div>
@@ -538,10 +564,11 @@ export default function App() {
         </div>
 
         {/* Sleek Bottom Navigation Bar (Icons Only) */}
-        <nav
-          id="app-bottom-nav"
-          className="shrink-0 h-14 bg-[#090909] border-t border-white/[0.08] flex items-center justify-around px-8 z-20 max-w-md mx-auto w-full sm:max-w-none"
-        >
+        <div className="shrink-0 bg-[#090909] border-t border-white/[0.08] z-20 w-full pb-[env(safe-area-inset-bottom)]">
+          <nav
+            id="app-bottom-nav"
+            className="h-14 flex items-center justify-around px-8 max-w-md mx-auto w-full sm:max-w-none"
+          >
           <button
             id="bottom-tab-explore"
             onClick={() => setActiveTab('explore')}
@@ -583,7 +610,22 @@ export default function App() {
           >
             <Bookmark className="w-5 h-5 stroke-[2.2]" />
           </button>
-        </nav>
+
+          <button
+            id="bottom-tab-settings"
+            onClick={() => setActiveTab('settings')}
+            className={`flex items-center justify-center w-14 h-10 rounded-2xl transition-all duration-200 ${
+              activeTab === 'settings'
+                ? 'bg-[#C5A059] text-black shadow-lg shadow-[#C5A059]/20 scale-105'
+                : 'text-white/40 hover:text-white hover:bg-white/[0.06]'
+            }`}
+            title="Settings"
+            aria-label="Settings"
+          >
+            <Settings className="w-5 h-5 stroke-[2.2]" />
+          </button>
+          </nav>
+        </div>
       </main>
 
       {/* Full Player Modal */}
@@ -613,18 +655,11 @@ export default function App() {
         />
       )}
 
-      {/* Synchronized Ebook Reader Modal */}
-      {showEbookReader && (
-        <EbookReaderModal
+      {showEbookReader && readingBook && (
+        <GutenbergReaderModal
           isOpen={showEbookReader}
-          book={readingBook || playerState.currentBook || catalog[0]}
-          playerState={playerState}
+          book={readingBook}
           onClose={() => setShowEbookReader(false)}
-          onTogglePlayPause={handleTogglePlayPause}
-          onSeek={handleSeek}
-          onRewind15={handleRewind15}
-          onForward30={handleForward30}
-          onSelectAudioTrack={handleSelectTrack}
         />
       )}
 
