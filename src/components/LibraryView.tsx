@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Audiobook, Bookmark as BookmarkType, OfflineBookData } from '../types';
 import {
   Bookmark,
@@ -12,9 +12,11 @@ import {
   MessageSquare,
   Clock,
   WifiOff,
+  Upload,
 } from 'lucide-react';
 import { formatBytes } from '../utils/offlineStorage';
 import { ListeningHabitsChart } from './ListeningHabitsChart';
+import { parseUploadedEpub } from '../utils/epubParser';
 
 interface LibraryViewProps {
   history: Audiobook[];
@@ -27,6 +29,7 @@ interface LibraryViewProps {
   onDeleteBookmark: (id: string) => void;
   onJumpToBookmark: (bm: BookmarkType) => void;
   onOpenOfflineManager: () => void;
+  onUploadEpub: (book: Audiobook) => void;
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
@@ -40,10 +43,29 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onDeleteBookmark,
   onJumpToBookmark,
   onOpenOfflineManager,
+  onUploadEpub,
 }) => {
   const [tab, setTab] = useState<'saved' | 'offline' | 'history' | 'bookmarks'>('saved');
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const readyOffline = offlineBooks.filter((b) => b.status === 'ready');
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const parsedBook = await parseUploadedEpub(file);
+      onUploadEpub(parsedBook);
+    } catch (err) {
+      console.error('EPUB upload error:', err);
+      alert('Failed to parse EPUB file. Please ensure it is a valid EPUB document.');
+    } finally {
+      setIsUploading(false);
+      if (e.target) e.target.value = '';
+    }
+  };
 
   const formatTime = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -57,14 +79,32 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         <h1 className="text-base font-serif-display italic font-semibold text-white tracking-wide">
           Your Library
         </h1>
-        <button
-          id="btn-open-storage-manager"
-          onClick={onOpenOfflineManager}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-[10px] uppercase tracking-wider text-[#C5A059] font-medium transition-all"
-        >
-          <HardDrive className="w-3 h-3" />
-          <span>Storage</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".epub"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <button
+            id="btn-upload-epub"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C5A059]/15 hover:bg-[#C5A059]/25 border border-[#C5A059]/40 text-[10px] uppercase tracking-wider text-[#C5A059] font-semibold transition-all disabled:opacity-50"
+          >
+            <Upload className="w-3 h-3" />
+            <span>{isUploading ? 'Parsing...' : 'Upload EPUB'}</span>
+          </button>
+          <button
+            id="btn-open-storage-manager"
+            onClick={onOpenOfflineManager}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-[10px] uppercase tracking-wider text-[#C5A059] font-medium transition-all"
+          >
+            <HardDrive className="w-3 h-3" />
+            <span>Storage</span>
+          </button>
+        </div>
       </div>
 
       <div className="mb-6">

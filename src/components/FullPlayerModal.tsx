@@ -146,16 +146,6 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
               <Moon className="w-4 h-4" />
             </button>
           )}
-          {onOpenBookmarks && (
-            <button
-              id="btn-open-bookmarks-modal"
-              onClick={onOpenBookmarks}
-              className="p-2 rounded-full text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors"
-              title="Add Bookmark & Audio Note"
-            >
-              <Bookmark className="w-4 h-4" />
-            </button>
-          )}
           <button
             id="btn-save-audiobook"
             onClick={() => onToggleSaveBook(currentBook)}

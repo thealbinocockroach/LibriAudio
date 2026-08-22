@@ -291,6 +291,15 @@ export default function App() {
     });
   };
 
+  const handleUploadEpub = (book: Audiobook) => {
+    setCatalog((prev) => [book, ...prev]);
+    setPlayerState((prev) => ({
+      ...prev,
+      savedBooks: [book, ...prev.savedBooks],
+    }));
+    handleOpenEbookReader(book);
+  };
+
   const handleRefreshFeed = () => {
     setIsLoadingFeed(true);
     setTimeout(() => {
@@ -470,6 +479,20 @@ export default function App() {
           </button>
 
           <button
+            id="btn-header-settings"
+            onClick={() => setActiveTab('settings')}
+            className={`p-2 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all ${
+              activeTab === 'settings'
+                ? 'bg-[#C5A059]/20 border-[#C5A059] text-[#C5A059]'
+                : 'bg-white/[0.03] border-white/10 text-white/70 hover:text-white hover:bg-white/[0.08]'
+            }`}
+            title="Settings"
+            aria-label="Settings"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+
+          <button
             id="btn-header-offline-manager"
             onClick={() => setShowOfflineManagerModal(true)}
             className="p-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/10 text-white/70 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-all"
@@ -527,6 +550,7 @@ export default function App() {
                     onDeleteBookmark={handleDeleteBookmark}
                     onJumpToBookmark={handleJumpToBookmark}
                     onOpenOfflineManager={() => setShowOfflineManagerModal(true)}
+                    onUploadEpub={handleUploadEpub}
                   />
                 </div>
               )}
@@ -609,20 +633,6 @@ export default function App() {
             aria-label="Library"
           >
             <Bookmark className="w-5 h-5 stroke-[2.2]" />
-          </button>
-
-          <button
-            id="bottom-tab-settings"
-            onClick={() => setActiveTab('settings')}
-            className={`flex items-center justify-center w-14 h-10 rounded-2xl transition-all duration-200 ${
-              activeTab === 'settings'
-                ? 'bg-[#C5A059] text-black shadow-lg shadow-[#C5A059]/20 scale-105'
-                : 'text-white/40 hover:text-white hover:bg-white/[0.06]'
-            }`}
-            title="Settings"
-            aria-label="Settings"
-          >
-            <Settings className="w-5 h-5 stroke-[2.2]" />
           </button>
           </nav>
         </div>
