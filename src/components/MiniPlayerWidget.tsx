@@ -76,7 +76,7 @@ export const MiniPlayerWidget: React.FC<MiniPlayerWidgetProps> = ({
       {/* Thin Bottom Progress Line */}
       <div className="w-full bg-white/5 h-[2px]">
         <div
-          className={`${isPlaying ? 'bg-emerald-500' : 'bg-[#C5A059]'} h-full transition-all duration-300 ease-linear`}
+          className="bg-[#C5A059] h-full transition-all duration-300 ease-linear"
           style={{ width: `${Math.min(100, Math.max(0, progressPercent))}%` }}
         />
       </div>

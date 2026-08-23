@@ -64,6 +64,7 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
   isDownloaded,
 }) => {
   const [showChapters, setShowChapters] = useState(false);
+
   const { currentBook, currentTrack, currentTrackIndex, isPlaying, isBuffering, currentTime, duration, playbackSpeed, sleepTimer, voiceEnhancer } =
     playerState;
 
@@ -169,7 +170,9 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
 
       {/* Large Artwork Display */}
       <div id="player-cover-container" className="relative my-auto flex flex-col items-center z-10">
-        <div className="relative w-56 h-56 rounded-2xl overflow-hidden shadow-2xl shadow-black border border-white/10 bg-[#111111] group">
+        <div
+          className="relative w-52 h-52 sm:w-56 sm:h-56 rounded-2xl overflow-hidden shadow-2xl shadow-black border border-white/10 bg-[#111111]"
+        >
           <img
             src={currentBook.coverImageUrl}
             alt={currentBook.title}
@@ -185,7 +188,7 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
         </div>
 
         {/* Audiobook & Chapter Meta */}
-        <div className="text-center mt-6 px-4 max-w-full">
+        <div className="text-center mt-4 px-4 max-w-full">
           <h2 className="text-lg font-serif-display italic font-semibold text-white leading-tight truncate">
             {currentTrack?.title || currentBook.title}
           </h2>
@@ -207,11 +210,9 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
             max={currentDuration || 100}
             value={currentTime}
             onChange={(e) => onSeek(Number(e.target.value))}
-            className={`w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer transition-all ${
-              isPlaying ? 'accent-emerald-500 hover:accent-emerald-400' : 'accent-[#C5A059] hover:accent-[#d4af65]'
-            }`}
+            className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer transition-all accent-[#C5A059] hover:accent-[#d4af65]"
           />
-          <div className="flex justify-between text-[10px] tracking-wider text-white/40 font-mono">
+          <div className="flex justify-between text-[10px] tracking-wider font-mono text-[#C5A059]">
             <span>{formatTime(currentTime)}</span>
             <span>-{formatTime(remainingTime)}</span>
           </div>
@@ -423,6 +424,7 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
           </div>
         </div>
       )}
+
       </div>
     </div>
   );

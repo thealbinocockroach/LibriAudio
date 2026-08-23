@@ -11,6 +11,7 @@
   --accent-dim: rgba(197, 160, 89, 0.15);
   --text-main: #EFEFEF;
   --text-dim: #888888;
+  --border-subtle: rgba(255, 255, 255, 0.08);
   --font-serif: 'Playfair Display', Georgia, serif;
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
@@ -19,6 +20,7 @@ body {
   background-color: var(--bg);
   color: var(--text-main);
   font-family: var(--font-sans);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .font-serif-display {
@@ -43,4 +45,13 @@ body {
 
 .gold-accent-text {
   color: var(--accent);
+}
+
+/* Light Mode Overrides for Crisp Typography */
+[data-theme-category="light"] {
+  --border-subtle: rgba(0, 0, 0, 0.08);
+}
+[data-theme-category="light"] body {
+  background-color: var(--bg);
+  color: var(--text-main);
 }

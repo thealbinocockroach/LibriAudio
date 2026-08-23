@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { INITIAL_AUDIOBOOKS } from './data/mockCatalog';
 import { Audiobook, PlayerState, Bookmark as BookmarkType, OfflineBookData, VoiceEnhancerPreset, SleepTimerOption } from './types';
 import { ExploreView } from './components/ExploreView';
 import { SearchView } from './components/SearchView';
 import { LibraryView } from './components/LibraryView';
+import { StatsView } from './components/StatsView';
 import { SettingsView } from './components/SettingsView';
 import { MiniPlayerWidget } from './components/MiniPlayerWidget';
 import { FullPlayerModal } from './components/FullPlayerModal';
@@ -17,7 +18,13 @@ import { OfflineManagerModal } from './components/OfflineManagerModal';
 import { BookDetailModal } from './components/BookDetailModal';
 import { getAllOfflineBooks, isBookOfflineReady } from './utils/offlineStorage';
 import { resolveFullTracklist } from './utils/librivoxRecommendations';
-import { getEbookCloudUrl } from './data/ebookData';
+import { parseUploadedEpub } from './utils/epubParser';
+import { initTheme } from './utils/themeManager';
+import {
+  isCurrentlyFullscreen,
+  toggleFullscreenMode,
+  requestFullscreenMode,
+} from './utils/fullscreenHelper';
 import {
   Compass,
   Search,
@@ -26,15 +33,20 @@ import {
   Headphones,
   HardDrive,
   Settings,
+  BarChart3,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
+import { AppLogo } from './components/AppLogo';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'explore' | 'search' | 'library' | 'settings'>('explore');
+  const [activeTab, setActiveTab] = useState<'explore' | 'search' | 'library' | 'stats' | 'settings'>('explore');
   const [showFullPlayer, setShowFullPlayer] = useState(false);
   const [showEbookReader, setShowEbookReader] = useState(false);
   const [readingBook, setReadingBook] = useState<Audiobook | null>(INITIAL_AUDIOBOOKS[0]);
   const [catalog, setCatalog] = useState<Audiobook[]>(INITIAL_AUDIOBOOKS);
   const [isLoadingFeed, setIsLoadingFeed] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Modals for playback & storage features
   const [showSleepTimerModal, setShowSleepTimerModal] = useState(false);
@@ -64,7 +76,7 @@ export default function App() {
     return {
       history: [INITIAL_AUDIOBOOKS[0]],
       savedBooks: [INITIAL_AUDIOBOOKS[1]],
-      bookmarks: []
+      bookmarks: [],
     };
   };
 
@@ -96,13 +108,49 @@ export default function App() {
     isOfflineOnly: false,
   });
 
+  // Initialize Theme and Auto Fullscreen on First User Interaction by Default
+  useEffect(() => {
+    initTheme();
+
+    const autoFS = localStorage.getItem('libriaudio_auto_fullscreen');
+    const shouldAutoFS = autoFS === null || autoFS === 'true';
+
+    const triggerAutoFullscreen = async () => {
+      if (shouldAutoFS && !isCurrentlyFullscreen()) {
+        await requestFullscreenMode();
+        setIsFullscreen(isCurrentlyFullscreen());
+      }
+    };
+
+    window.addEventListener('pointerdown', triggerAutoFullscreen, { once: true });
+    window.addEventListener('keydown', triggerAutoFullscreen, { once: true });
+
+    const handleFSChange = () => {
+      setIsFullscreen(isCurrentlyFullscreen());
+    };
+
+    document.addEventListener('fullscreenchange', handleFSChange);
+    document.addEventListener('webkitfullscreenchange', handleFSChange);
+
+    return () => {
+      window.removeEventListener('pointerdown', triggerAutoFullscreen);
+      window.removeEventListener('keydown', triggerAutoFullscreen);
+      document.removeEventListener('fullscreenchange', handleFSChange);
+      document.removeEventListener('webkitfullscreenchange', handleFSChange);
+    };
+  }, []);
+
+  // Save state
   useEffect(() => {
     try {
-      localStorage.setItem('libriaudio_state', JSON.stringify({
-        history: playerState.history.slice(0, 50), // keep last 50
-        savedBooks: playerState.savedBooks,
-        bookmarks: playerState.bookmarks
-      }));
+      localStorage.setItem(
+        'libriaudio_state',
+        JSON.stringify({
+          history: playerState.history.slice(0, 50),
+          savedBooks: playerState.savedBooks,
+          bookmarks: playerState.bookmarks,
+        })
+      );
     } catch (e) {}
   }, [playerState.history, playerState.savedBooks, playerState.bookmarks]);
 
@@ -183,7 +231,6 @@ export default function App() {
       };
     });
 
-    // If the book was dynamically loaded with only 1 track, asynchronously resolve all chapters in background
     if (book.tracks.length <= 1) {
       resolveFullTracklist(book).then((fullBook) => {
         if (fullBook.tracks.length > 1) {
@@ -201,16 +248,6 @@ export default function App() {
         }
       });
     }
-  };
-
-  const handleOpenBookDetails = (book: Audiobook) => {
-    setSelectedBookForDetails(book);
-    setShowBookDetailModal(true);
-  };
-
-  const handleOpenEbookReader = (book: Audiobook) => {
-    setReadingBook(book);
-    setShowEbookReader(true);
   };
 
   const handleTogglePlayPause = () => {
@@ -237,35 +274,21 @@ export default function App() {
 
   const handleSkipNext = () => {
     if (!playerState.currentBook) return;
-
-    if (playerState.sleepTimer.isActive && playerState.sleepTimer.isEndOfChapter) {
-      setPlayerState((prev) => ({
-        ...prev,
-        isPlaying: false,
-        sleepTimer: {
-          isActive: false,
-          durationMinutes: 0,
-          remainingSeconds: 0,
-          isEndOfChapter: false,
-        },
-      }));
-      return;
-    }
-
-    const tracks = playerState.currentBook.tracks;
-    if (playerState.currentTrackIndex < tracks.length - 1) {
-      const nextIndex = playerState.currentTrackIndex + 1;
-      handleSelectBook(playerState.currentBook, nextIndex);
+    const nextIdx = playerState.currentTrackIndex + 1;
+    if (nextIdx < playerState.currentBook.tracks.length) {
+      handleSelectBook(playerState.currentBook, nextIdx);
+    } else {
+      setPlayerState((prev) => ({ ...prev, isPlaying: false, currentTime: 0 }));
     }
   };
 
   const handleSkipPrevious = () => {
     if (!playerState.currentBook) return;
-    if (playerState.currentTrackIndex > 0) {
-      const prevIndex = playerState.currentTrackIndex - 1;
-      handleSelectBook(playerState.currentBook, prevIndex);
-    } else {
+    if (playerState.currentTime > 5 || playerState.currentTrackIndex === 0) {
       handleSeek(0);
+    } else {
+      const prevIdx = playerState.currentTrackIndex - 1;
+      handleSelectBook(playerState.currentBook, prevIdx);
     }
   };
 
@@ -273,53 +296,72 @@ export default function App() {
     setPlayerState((prev) => ({ ...prev, playbackSpeed: speed }));
   };
 
-  const handleSelectTrack = (index: number) => {
+  const handleSelectTrack = (trackIndex: number) => {
     if (playerState.currentBook) {
-      handleSelectBook(playerState.currentBook, index);
+      handleSelectBook(playerState.currentBook, trackIndex);
     }
   };
 
   const handleToggleSaveBook = (book: Audiobook) => {
     setPlayerState((prev) => {
-      const exists = prev.savedBooks.some((b) => b.id === book.id);
-      return {
-        ...prev,
-        savedBooks: exists
-          ? prev.savedBooks.filter((b) => b.id !== book.id)
-          : [book, ...prev.savedBooks],
-      };
+      const isSaved = prev.savedBooks.some((b) => b.id === book.id);
+      const newSaved = isSaved
+        ? prev.savedBooks.filter((b) => b.id !== book.id)
+        : [book, ...prev.savedBooks];
+
+      return { ...prev, savedBooks: newSaved };
     });
-  };
-
-  const handleUploadEpub = (book: Audiobook) => {
-    setCatalog((prev) => [book, ...prev]);
-    setPlayerState((prev) => ({
-      ...prev,
-      savedBooks: [book, ...prev.savedBooks],
-    }));
-    handleOpenEbookReader(book);
-  };
-
-  const handleRefreshFeed = () => {
-    setIsLoadingFeed(true);
-    setTimeout(() => {
-      setIsLoadingFeed(false);
-    }, 800);
   };
 
   const handleClearHistory = () => {
     setPlayerState((prev) => ({ ...prev, history: [] }));
   };
 
-  // Sleep Timer handlers
+  const handleOpenEbookReader = (book: Audiobook) => {
+    setReadingBook(book);
+    setShowEbookReader(true);
+  };
+
+  const handleUploadEpub = (book: Audiobook) => {
+    setCatalog((prev) => {
+      if (prev.some((b) => b.id === book.id)) return prev;
+      return [book, ...prev];
+    });
+    setPlayerState((prev) => ({
+      ...prev,
+      savedBooks: [book, ...prev.savedBooks.filter((b) => b.id !== book.id)],
+    }));
+    handleOpenEbookReader(book);
+  };
+
+  const handleOpenBookDetails = (book: Audiobook) => {
+    setSelectedBookForDetails(book);
+    setShowBookDetailModal(true);
+  };
+
+  const handleRefreshFeed = () => {
+    setIsLoadingFeed(true);
+    setTimeout(() => {
+      setCatalog([...INITIAL_AUDIOBOOKS]);
+      setIsLoadingFeed(false);
+    }, 600);
+  };
+
+  // Sleep Timer Handlers
   const handleSetSleepTimer = (option: SleepTimerOption, customMinutes?: number) => {
+    if (option === null) {
+      handleCancelSleepTimer();
+      return;
+    }
+
     if (option === 'chapter') {
+      const remainingInTrack = Math.max(0, playerState.duration - playerState.currentTime);
       setPlayerState((prev) => ({
         ...prev,
         sleepTimer: {
           isActive: true,
-          totalSeconds: 0,
-          remainingSeconds: 0,
+          totalSeconds: Math.floor(remainingInTrack),
+          remainingSeconds: Math.floor(remainingInTrack),
           isEndOfChapter: true,
           fadeDurationSecs: 20,
         },
@@ -327,9 +369,8 @@ export default function App() {
       return;
     }
 
-    const durationMins = typeof option === 'number' ? option : customMinutes || 15;
-    const totalSecs = durationMins * 60;
-
+    const minutes = typeof option === 'number' ? option : customMinutes || 15;
+    const totalSecs = minutes * 60;
     setPlayerState((prev) => ({
       ...prev,
       sleepTimer: {
@@ -416,7 +457,7 @@ export default function App() {
     : false;
 
   return (
-    <div id="libriaudio-app-root" className="fixed inset-0 bg-[#070707] text-[#E0E0E0] flex flex-col font-sans overflow-hidden antialiased">
+    <div id="libriaudio-app-root" className="fixed inset-0 bg-[#070707] text-[#E0E0E0] flex flex-col font-sans overflow-hidden antialiased select-none">
       {/* Background Audio Engine */}
       <AudioEngine
         playerState={playerState}
@@ -441,13 +482,15 @@ export default function App() {
         id="app-top-header"
         className="h-16 px-4 md:px-8 border-b border-white/[0.08] bg-[#0A0A0A] flex items-center justify-between shrink-0 z-20"
       >
-        {/* Brand Logo & Title */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#C5A059] to-[#8C6D2B] flex items-center justify-center text-black shadow-lg shadow-[#C5A059]/20">
-            <Headphones className="w-5 h-5" />
-          </div>
+        {/* Brand Logo & Title (Headphone Gradient Logo) */}
+        <div
+          onClick={() => setActiveTab('explore')}
+          className="flex items-center gap-3 cursor-pointer group"
+          title="LibriAudio Home"
+        >
+          <AppLogo className="w-10 h-10 transition-transform group-hover:scale-105" />
           <div>
-            <h1 className="text-lg font-serif-display italic font-bold text-white tracking-wide">
+            <h1 className="text-lg font-serif-display italic font-bold text-white tracking-wide group-hover:text-[#C5A059] transition-colors">
               LibriAudio
             </h1>
             <p className="text-[11px] text-white/50 hidden md:block">
@@ -456,50 +499,24 @@ export default function App() {
           </div>
         </div>
 
-        {/* Right Action Tools: Sleep Timer & Offline Downloads */}
-        <div className="flex items-center gap-2">
+        {/* Right Action Tools: Fullscreen */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Fullscreen Toggle */}
           <button
-            id="btn-header-sleep-timer"
-            onClick={() => setShowSleepTimerModal(true)}
-            className={`p-2 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all ${
-              playerState.sleepTimer.isActive
+            id="btn-header-fullscreen"
+            onClick={async () => {
+              await toggleFullscreenMode();
+              setIsFullscreen(isCurrentlyFullscreen());
+            }}
+            className={`p-2 rounded-xl border text-xs font-medium flex items-center transition-all ${
+              isFullscreen
                 ? 'bg-[#C5A059]/20 border-[#C5A059] text-[#C5A059]'
                 : 'bg-white/[0.03] border-white/10 text-white/70 hover:text-white hover:bg-white/[0.08]'
             }`}
-            title="Sleep Timer"
+            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+            aria-label="Toggle Fullscreen"
           >
-            <Moon className="w-4 h-4" />
-            {playerState.sleepTimer.isActive && (
-              <span className="text-[10px] font-mono font-bold hidden sm:inline">
-                {playerState.sleepTimer.isEndOfChapter
-                  ? 'Ch End'
-                  : `${Math.ceil(playerState.sleepTimer.remainingSeconds / 60)}m`}
-              </span>
-            )}
-          </button>
-
-          <button
-            id="btn-header-settings"
-            onClick={() => setActiveTab('settings')}
-            className={`p-2 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all ${
-              activeTab === 'settings'
-                ? 'bg-[#C5A059]/20 border-[#C5A059] text-[#C5A059]'
-                : 'bg-white/[0.03] border-white/10 text-white/70 hover:text-white hover:bg-white/[0.08]'
-            }`}
-            title="Settings"
-            aria-label="Settings"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-
-          <button
-            id="btn-header-offline-manager"
-            onClick={() => setShowOfflineManagerModal(true)}
-            className="p-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/10 text-white/70 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-all"
-            title="Offline Downloads"
-          >
-            <HardDrive className="w-4 h-4" />
-            <span className="hidden sm:inline text-[11px]">Downloads</span>
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
         </div>
       </header>
@@ -523,6 +540,7 @@ export default function App() {
                     savedBooks={playerState.savedBooks}
                     onSelectBook={handleOpenBookDetails}
                     onReadBook={handleOpenEbookReader}
+                    onUploadEpub={handleUploadEpub}
                     isLoading={isLoadingFeed}
                     onRefresh={handleRefreshFeed}
                   />
@@ -534,6 +552,7 @@ export default function App() {
                     allBooks={catalog}
                     onSelectBook={handleOpenBookDetails}
                     onReadBook={handleOpenEbookReader}
+                    onUploadEpub={handleUploadEpub}
                   />
                 </div>
               )}
@@ -544,6 +563,8 @@ export default function App() {
                     savedBooks={playerState.savedBooks}
                     offlineBooks={offlineBooks}
                     bookmarks={playerState.bookmarks}
+                    currentBook={playerState.currentBook}
+                    isPlaying={playerState.isPlaying}
                     onSelectBook={handleOpenBookDetails}
                     onReadBook={handleOpenEbookReader}
                     onClearHistory={handleClearHistory}
@@ -554,8 +575,17 @@ export default function App() {
                   />
                 </div>
               )}
+              {activeTab === 'stats' && (
+                <div className="max-w-4xl mx-auto w-full p-4 md:p-8">
+                  <StatsView
+                    history={playerState.history}
+                    onSelectBook={handleOpenBookDetails}
+                    onPlayBook={(book) => handleSelectBook(book, 0)}
+                  />
+                </div>
+              )}
               {activeTab === 'settings' && (
-                <SettingsView />
+                <SettingsView onUploadEpub={handleUploadEpub} />
               )}
             </>
           )}
@@ -587,53 +617,81 @@ export default function App() {
           </div>
         </div>
 
-        {/* Sleek Bottom Navigation Bar (Icons Only) */}
+        {/* Sleek Bottom Navigation Bar (Explore, Search, Library, Stats, Settings) */}
         <div className="shrink-0 bg-[#090909] border-t border-white/[0.08] z-20 w-full pb-[env(safe-area-inset-bottom)]">
           <nav
             id="app-bottom-nav"
-            className="h-14 flex items-center justify-around px-8 max-w-md mx-auto w-full sm:max-w-none"
+            className="h-14 flex items-center justify-around px-3 sm:px-8 max-w-xl mx-auto w-full"
           >
-          <button
-            id="bottom-tab-explore"
-            onClick={() => setActiveTab('explore')}
-            className={`flex items-center justify-center w-14 h-10 rounded-2xl transition-all duration-200 ${
-              activeTab === 'explore'
-                ? 'bg-[#C5A059] text-black shadow-lg shadow-[#C5A059]/20 scale-105'
-                : 'text-white/40 hover:text-white hover:bg-white/[0.06]'
-            }`}
-            title="Explore"
-            aria-label="Explore"
-          >
-            <Compass className="w-5 h-5 stroke-[2.2]" />
-          </button>
+            <button
+              id="bottom-tab-explore"
+              onClick={() => setActiveTab('explore')}
+              className={`flex items-center justify-center w-12 sm:w-14 h-10 rounded-2xl transition-all duration-200 ${
+                activeTab === 'explore'
+                  ? 'bg-[#C5A059] text-black shadow-lg shadow-[#C5A059]/20 scale-105'
+                  : 'text-white/40 hover:text-white hover:bg-white/[0.06]'
+              }`}
+              title="Explore"
+              aria-label="Explore"
+            >
+              <Compass className="w-5 h-5 stroke-[2.2]" />
+            </button>
 
-          <button
-            id="bottom-tab-search"
-            onClick={() => setActiveTab('search')}
-            className={`flex items-center justify-center w-14 h-10 rounded-2xl transition-all duration-200 ${
-              activeTab === 'search'
-                ? 'bg-[#C5A059] text-black shadow-lg shadow-[#C5A059]/20 scale-105'
-                : 'text-white/40 hover:text-white hover:bg-white/[0.06]'
-            }`}
-            title="Search"
-            aria-label="Search"
-          >
-            <Search className="w-5 h-5 stroke-[2.2]" />
-          </button>
+            <button
+              id="bottom-tab-search"
+              onClick={() => setActiveTab('search')}
+              className={`flex items-center justify-center w-12 sm:w-14 h-10 rounded-2xl transition-all duration-200 ${
+                activeTab === 'search'
+                  ? 'bg-[#C5A059] text-black shadow-lg shadow-[#C5A059]/20 scale-105'
+                  : 'text-white/40 hover:text-white hover:bg-white/[0.06]'
+              }`}
+              title="Search"
+              aria-label="Search"
+            >
+              <Search className="w-5 h-5 stroke-[2.2]" />
+            </button>
 
-          <button
-            id="bottom-tab-library"
-            onClick={() => setActiveTab('library')}
-            className={`flex items-center justify-center w-14 h-10 rounded-2xl transition-all duration-200 ${
-              activeTab === 'library'
-                ? 'bg-[#C5A059] text-black shadow-lg shadow-[#C5A059]/20 scale-105'
-                : 'text-white/40 hover:text-white hover:bg-white/[0.06]'
-            }`}
-            title="Library"
-            aria-label="Library"
-          >
-            <Bookmark className="w-5 h-5 stroke-[2.2]" />
-          </button>
+            <button
+              id="bottom-tab-library"
+              onClick={() => setActiveTab('library')}
+              className={`flex items-center justify-center w-12 sm:w-14 h-10 rounded-2xl transition-all duration-200 ${
+                activeTab === 'library'
+                  ? 'bg-[#C5A059] text-black shadow-lg shadow-[#C5A059]/20 scale-105'
+                  : 'text-white/40 hover:text-white hover:bg-white/[0.06]'
+              }`}
+              title="Library"
+              aria-label="Library"
+            >
+              <Bookmark className="w-5 h-5 stroke-[2.2]" />
+            </button>
+
+            <button
+              id="bottom-tab-stats"
+              onClick={() => setActiveTab('stats')}
+              className={`flex items-center justify-center w-12 sm:w-14 h-10 rounded-2xl transition-all duration-200 ${
+                activeTab === 'stats'
+                  ? 'bg-[#C5A059] text-black shadow-lg shadow-[#C5A059]/20 scale-105'
+                  : 'text-white/40 hover:text-white hover:bg-white/[0.06]'
+              }`}
+              title="Stats & Author Rankings"
+              aria-label="Stats"
+            >
+              <BarChart3 className="w-5 h-5 stroke-[2.2]" />
+            </button>
+
+            <button
+              id="bottom-tab-settings"
+              onClick={() => setActiveTab('settings')}
+              className={`flex items-center justify-center w-12 sm:w-14 h-10 rounded-2xl transition-all duration-200 ${
+                activeTab === 'settings'
+                  ? 'bg-[#C5A059] text-black shadow-lg shadow-[#C5A059]/20 scale-105'
+                  : 'text-white/40 hover:text-white hover:bg-white/[0.06]'
+              }`}
+              title="Settings & Preferences"
+              aria-label="Settings"
+            >
+              <Settings className="w-5 h-5 stroke-[2.2]" />
+            </button>
           </nav>
         </div>
       </main>
@@ -665,6 +723,7 @@ export default function App() {
         />
       )}
 
+      {/* Gutenberg / EPUB Ebook Reader Modal */}
       {showEbookReader && readingBook && (
         <GutenbergReaderModal
           isOpen={showEbookReader}
@@ -736,7 +795,7 @@ export default function App() {
         onReadBook={handleOpenEbookReader}
       />
 
-      {/* Book Details & Information Modal (Shows details first, then Play button next to it) */}
+      {/* Book Details & Information Modal */}
       {showBookDetailModal && selectedBookForDetails && (
         <BookDetailModal
           isOpen={showBookDetailModal}

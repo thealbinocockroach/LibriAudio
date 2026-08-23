@@ -1,35 +1,36 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Audiobook, Bookmark as BookmarkType, OfflineBookData } from '../types';
 import {
   Bookmark,
-  History,
   Play,
   Trash2,
   BookOpen,
   HardDrive,
   Download,
-  CheckCircle2,
-  MessageSquare,
-  Clock,
   WifiOff,
-  Upload,
 } from 'lucide-react';
-import { formatBytes } from '../utils/offlineStorage';
-import { ListeningHabitsChart } from './ListeningHabitsChart';
-import { parseUploadedEpub } from '../utils/epubParser';
+import { formatBytes, getBookDownloadSummary } from '../utils/offlineStorage';
+import {
+  CoverSyncBadge,
+  InlineSyncBadge,
+  SyncLegendBar,
+  getBookSyncStatus,
+} from './SyncStatusBadge';
 
 interface LibraryViewProps {
   history: Audiobook[];
   savedBooks: Audiobook[];
   offlineBooks: OfflineBookData[];
   bookmarks: BookmarkType[];
+  currentBook?: Audiobook | null;
+  isPlaying?: boolean;
   onSelectBook: (book: Audiobook) => void;
   onReadBook?: (book: Audiobook) => void;
   onClearHistory: () => void;
   onDeleteBookmark: (id: string) => void;
   onJumpToBookmark: (bm: BookmarkType) => void;
   onOpenOfflineManager: () => void;
-  onUploadEpub: (book: Audiobook) => void;
+  onUploadEpub?: (book: Audiobook) => void;
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
@@ -37,35 +38,93 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   savedBooks,
   offlineBooks,
   bookmarks,
+  currentBook = null,
+  isPlaying = false,
   onSelectBook,
   onReadBook,
   onClearHistory,
   onDeleteBookmark,
   onJumpToBookmark,
   onOpenOfflineManager,
-  onUploadEpub,
 }) => {
   const [tab, setTab] = useState<'saved' | 'offline' | 'history' | 'bookmarks'>('saved');
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [downloadSummaries, setDownloadSummaries] = useState<
+    Record<
+      string,
+      {
+        isFullyDownloaded: boolean;
+        isPartiallyDownloaded: boolean;
+        downloadedCount: number;
+        totalTracks: number;
+      }
+    >
+  >({});
 
   const readyOffline = offlineBooks.filter((b) => b.status === 'ready');
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setIsUploading(true);
-    try {
-      const parsedBook = await parseUploadedEpub(file);
-      onUploadEpub(parsedBook);
-    } catch (err) {
-      console.error('EPUB upload error:', err);
-      alert('Failed to parse EPUB file. Please ensure it is a valid EPUB document.');
-    } finally {
-      setIsUploading(false);
-      if (e.target) e.target.value = '';
-    }
-  };
+  // Asynchronously query exact download track breakdown for all books in library
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSummaries = async () => {
+      const allUniqueBooks = Array.from(
+        new Map(
+          [...savedBooks, ...history, ...offlineBooks.map((o) => o.book)].map((b) => [b.id, b])
+        ).values()
+      );
+
+      const summaries: Record<
+        string,
+        {
+          isFullyDownloaded: boolean;
+          isPartiallyDownloaded: boolean;
+          downloadedCount: number;
+          totalTracks: number;
+        }
+      > = {};
+
+      for (const book of allUniqueBooks) {
+        try {
+          const summary = await getBookDownloadSummary(book);
+          summaries[book.id] = summary;
+        } catch {
+          // ignore
+        }
+      }
+
+      if (isMounted) {
+        setDownloadSummaries(summaries);
+      }
+    };
+
+    loadSummaries();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [savedBooks, history, offlineBooks]);
+
+  // Overall sync stats across active library collections
+  const allLibraryBooks = Array.from(
+    new Map(
+      [...savedBooks, ...history, ...offlineBooks.map((o) => o.book)].map((b) => [b.id, b])
+    ).values()
+  );
+
+  const syncStats = allLibraryBooks.reduce(
+    (acc, b) => {
+      const info = getBookSyncStatus(
+        b,
+        offlineBooks,
+        currentBook,
+        isPlaying,
+        downloadSummaries[b.id]
+      );
+      acc[info.status]++;
+      return acc;
+    },
+    { cached: 0, partial: 0, streaming: 0, cloud: 0 }
+  );
 
   const formatTime = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -75,41 +134,38 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
   return (
     <div id="library-view-container" className="w-full pb-16 text-[#EFEFEF]">
-      <div className="flex items-center justify-between mb-3">
-        <h1 className="text-base font-serif-display italic font-semibold text-white tracking-wide">
-          Your Library
-        </h1>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h1 className="text-xl font-serif-display italic font-bold text-white tracking-wide">
+            Your Library
+          </h1>
+          <p className="text-xs text-white/50 font-serif-display italic mt-0.5">
+            Saved audiobooks and offline sync storage
+          </p>
+        </div>
         <div className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".epub"
-            className="hidden"
-            onChange={handleFileChange}
-          />
-          <button
-            id="btn-upload-epub"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C5A059]/15 hover:bg-[#C5A059]/25 border border-[#C5A059]/40 text-[10px] uppercase tracking-wider text-[#C5A059] font-semibold transition-all disabled:opacity-50"
-          >
-            <Upload className="w-3 h-3" />
-            <span>{isUploading ? 'Parsing...' : 'Upload EPUB'}</span>
-          </button>
+          {/* Download Manager Launcher */}
           <button
             id="btn-open-storage-manager"
             onClick={onOpenOfflineManager}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-[10px] uppercase tracking-wider text-[#C5A059] font-medium transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-[#C5A059]/15 border border-white/10 hover:border-[#C5A059]/40 text-xs text-white/80 hover:text-[#C5A059] font-medium transition-all shadow-sm active:scale-95"
+            title="Open Offline Download Manager"
           >
-            <HardDrive className="w-3 h-3" />
-            <span>Storage</span>
+            <HardDrive className="w-3.5 h-3.5 text-[#C5A059]" />
+            <span>Download Manager</span>
+            {readyOffline.length > 0 && (
+              <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-[#C5A059] text-black text-[10px] font-mono font-bold">
+                {readyOffline.length}
+              </span>
+            )}
           </button>
         </div>
       </div>
 
-      <div className="mb-6">
-        <ListeningHabitsChart />
-      </div>
+
+
+      {/* Sync Status Legend Bar */}
+      <SyncLegendBar stats={syncStats} />
 
       {/* Library Sub-Navigation Tabs */}
       <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-white/[0.03] border border-white/10 mb-4 overflow-x-auto scrollbar-none">
@@ -174,49 +230,73 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </p>
             </div>
           ) : (
-            savedBooks.map((book) => (
-              <div
-                key={`saved-${book.id}`}
-                id={`saved-item-${book.id}`}
-                onClick={() => onSelectBook(book)}
-                className="flex items-center gap-3 p-2 rounded-2xl bg-[#111111]/90 border border-white/[0.07] hover:border-[#C5A059]/40 hover:bg-[#161616] transition-all cursor-pointer group"
-              >
-                <img
-                  src={book.coverImageUrl}
-                  alt={book.title}
-                  className="w-10 h-14 object-cover rounded-xl bg-[#1a1a1a] border border-white/5"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-xs font-serif-display italic font-medium text-[#EFEFEF] truncate group-hover:text-[#C5A059] transition-colors">
-                    {book.title}
-                  </h4>
-                  <p className="text-[11px] text-[#888888] font-serif-display italic truncate mt-0.5">{book.author}</p>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {onReadBook && (
+            savedBooks.map((book) => {
+              const syncInfo = getBookSyncStatus(
+                book,
+                offlineBooks,
+                currentBook,
+                isPlaying,
+                downloadSummaries[book.id]
+              );
+
+              return (
+                <div
+                  key={`saved-${book.id}`}
+                  id={`saved-item-${book.id}`}
+                  onClick={() => onSelectBook(book)}
+                  className="flex items-center gap-3 p-2.5 rounded-2xl bg-[#111111]/90 border border-white/[0.07] hover:border-[#C5A059]/40 hover:bg-[#161616] transition-all cursor-pointer group"
+                >
+                  {/* Book Cover with Visual Sync Status Overlay Badge */}
+                  <div className="relative shrink-0 w-12 h-16 sm:w-14 sm:h-20 rounded-xl overflow-hidden bg-[#1a1a1a] border border-white/10 shadow-sm group-hover:border-[#C5A059]/40 transition-colors">
+                    <img
+                      src={book.coverImageUrl}
+                      alt={book.title}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                    <CoverSyncBadge syncInfo={syncInfo} />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <h4 className="text-xs sm:text-sm font-serif-display italic font-medium text-[#EFEFEF] truncate group-hover:text-[#C5A059] transition-colors">
+                        {book.title}
+                      </h4>
+                      <InlineSyncBadge syncInfo={syncInfo} />
+                    </div>
+                    <p className="text-[11px] text-[#888888] font-serif-display italic truncate">
+                      {book.author} • {book.tracks?.length || 1} chapters
+                    </p>
+                    <p className="text-[10px] text-white/40 font-mono mt-0.5 truncate">
+                      {syncInfo.description}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    {onReadBook && (
+                      <button
+                        id={`btn-read-saved-${book.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReadBook(book);
+                        }}
+                        className="w-8 h-8 rounded-xl bg-white/[0.04] hover:bg-[#C5A059]/20 text-white/50 hover:text-[#C5A059] flex items-center justify-center transition-all border border-white/10 hover:border-[#C5A059]/40"
+                        title="Read Ebook Text"
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
-                      id={`btn-read-saved-${book.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onReadBook(book);
-                      }}
-                      className="w-8 h-8 rounded-xl bg-white/[0.04] hover:bg-[#C5A059]/20 text-white/50 hover:text-[#C5A059] flex items-center justify-center transition-all border border-white/10 hover:border-[#C5A059]/40"
-                      title="Read Ebook Text"
+                      id={`btn-play-saved-${book.id}`}
+                      className="w-8 h-8 rounded-xl bg-white/[0.05] group-hover:bg-[#C5A059] text-white/60 group-hover:text-black flex items-center justify-center transition-all shrink-0 border border-white/10 group-hover:border-[#C5A059]"
+                      title={syncInfo.status === 'cached' ? 'Play from Local Cache' : 'Stream Audiobook'}
                     >
-                      <BookOpen className="w-3.5 h-3.5" />
+                      <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
                     </button>
-                  )}
-                  <button
-                    id={`btn-play-saved-${book.id}`}
-                    className="w-8 h-8 rounded-xl bg-white/[0.05] group-hover:bg-[#C5A059] text-white/60 group-hover:text-black flex items-center justify-center transition-all shrink-0 border border-white/10 group-hover:border-[#C5A059]"
-                    title="Play Audio"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-                  </button>
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
@@ -241,54 +321,76 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </button>
             </div>
           ) : (
-            readyOffline.map((item) => (
-              <div
-                key={`offline-${item.bookId}`}
-                id={`offline-item-${item.bookId}`}
-                onClick={() => onSelectBook(item.book)}
-                className="flex items-center gap-3 p-2 rounded-2xl bg-[#111111]/90 border border-white/[0.07] hover:border-[#C5A059]/40 hover:bg-[#161616] transition-all cursor-pointer group"
-              >
-                <img
-                  src={item.book.coverImageUrl}
-                  alt={item.book.title}
-                  className="w-10 h-14 object-cover rounded-xl bg-[#1a1a1a] border border-white/5"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <h4 className="text-xs font-serif-display italic font-medium text-[#EFEFEF] truncate group-hover:text-[#C5A059] transition-colors">
-                      {item.book.title}
-                    </h4>
-                    <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 shrink-0">
-                      Offline
-                    </span>
+            readyOffline.map((item) => {
+              const syncInfo = getBookSyncStatus(
+                item.book,
+                offlineBooks,
+                currentBook,
+                isPlaying,
+                downloadSummaries[item.bookId] || {
+                  isFullyDownloaded: true,
+                  isPartiallyDownloaded: false,
+                  downloadedCount: item.book.tracks?.length || 1,
+                  totalTracks: item.book.tracks?.length || 1,
+                }
+              );
+
+              return (
+                <div
+                  key={`offline-${item.bookId}`}
+                  id={`offline-item-${item.bookId}`}
+                  onClick={() => onSelectBook(item.book)}
+                  className="flex items-center gap-3 p-2.5 rounded-2xl bg-[#111111]/90 border border-white/[0.07] hover:border-[#C5A059]/40 hover:bg-[#161616] transition-all cursor-pointer group"
+                >
+                  {/* Book Cover with Visual Sync Status Overlay Badge */}
+                  <div className="relative shrink-0 w-12 h-16 sm:w-14 sm:h-20 rounded-xl overflow-hidden bg-[#1a1a1a] border border-white/10 shadow-sm group-hover:border-[#C5A059]/40 transition-colors">
+                    <img
+                      src={item.book.coverImageUrl}
+                      alt={item.book.title}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                    <CoverSyncBadge syncInfo={syncInfo} />
                   </div>
-                  <p className="text-[11px] text-[#888888] font-serif-display italic truncate mt-0.5">
-                    {item.book.author} • {formatBytes(item.sizeBytes)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {onReadBook && (
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <h4 className="text-xs sm:text-sm font-serif-display italic font-medium text-[#EFEFEF] truncate group-hover:text-[#C5A059] transition-colors">
+                        {item.book.title}
+                      </h4>
+                      <InlineSyncBadge syncInfo={syncInfo} />
+                    </div>
+                    <p className="text-[11px] text-[#888888] font-serif-display italic truncate">
+                      {item.book.author} • {formatBytes(item.sizeBytes)}
+                    </p>
+                    <p className="text-[10px] text-emerald-400/80 font-mono mt-0.5 truncate">
+                      100% Offline Ready • {item.book.tracks?.length || 1} tracks stored
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    {onReadBook && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReadBook(item.book);
+                        }}
+                        className="w-8 h-8 rounded-xl bg-white/[0.04] hover:bg-[#C5A059]/20 text-white/50 hover:text-[#C5A059] flex items-center justify-center transition-all border border-white/10"
+                        title="Read Ebook Text"
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onReadBook(item.book);
-                      }}
-                      className="w-8 h-8 rounded-xl bg-white/[0.04] hover:bg-[#C5A059]/20 text-white/50 hover:text-[#C5A059] flex items-center justify-center transition-all border border-white/10"
-                      title="Read Ebook Text"
+                      className="w-8 h-8 rounded-xl bg-[#C5A059] text-black flex items-center justify-center transition-all shadow-md"
+                      title="Play Cached Audio"
                     >
-                      <BookOpen className="w-3.5 h-3.5" />
+                      <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
                     </button>
-                  )}
-                  <button
-                    className="w-8 h-8 rounded-xl bg-[#C5A059] text-black flex items-center justify-center transition-all shadow-md"
-                    title="Play Cached Audio"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-                  </button>
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
@@ -315,49 +417,73 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <p className="text-[10px] text-white/30 mt-0.5">Start listening from Explore to populate your history.</p>
             </div>
           ) : (
-            history.map((book) => (
-              <div
-                key={`history-${book.id}`}
-                id={`history-item-${book.id}`}
-                onClick={() => onSelectBook(book)}
-                className="flex items-center gap-3 p-2 rounded-2xl bg-[#111111]/90 border border-white/[0.07] hover:border-[#C5A059]/40 hover:bg-[#161616] transition-all cursor-pointer group"
-              >
-                <img
-                  src={book.coverImageUrl}
-                  alt={book.title}
-                  className="w-10 h-14 object-cover rounded-xl bg-[#1a1a1a] border border-white/5"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-xs font-serif-display italic font-medium text-[#EFEFEF] truncate group-hover:text-[#C5A059] transition-colors">
-                    {book.title}
-                  </h4>
-                  <p className="text-[11px] text-[#888888] font-serif-display italic truncate mt-0.5">{book.author}</p>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {onReadBook && (
+            history.map((book) => {
+              const syncInfo = getBookSyncStatus(
+                book,
+                offlineBooks,
+                currentBook,
+                isPlaying,
+                downloadSummaries[book.id]
+              );
+
+              return (
+                <div
+                  key={`history-${book.id}`}
+                  id={`history-item-${book.id}`}
+                  onClick={() => onSelectBook(book)}
+                  className="flex items-center gap-3 p-2.5 rounded-2xl bg-[#111111]/90 border border-white/[0.07] hover:border-[#C5A059]/40 hover:bg-[#161616] transition-all cursor-pointer group"
+                >
+                  {/* Book Cover with Visual Sync Status Overlay Badge */}
+                  <div className="relative shrink-0 w-12 h-16 sm:w-14 sm:h-20 rounded-xl overflow-hidden bg-[#1a1a1a] border border-white/10 shadow-sm group-hover:border-[#C5A059]/40 transition-colors">
+                    <img
+                      src={book.coverImageUrl}
+                      alt={book.title}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                    <CoverSyncBadge syncInfo={syncInfo} />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <h4 className="text-xs sm:text-sm font-serif-display italic font-medium text-[#EFEFEF] truncate group-hover:text-[#C5A059] transition-colors">
+                        {book.title}
+                      </h4>
+                      <InlineSyncBadge syncInfo={syncInfo} />
+                    </div>
+                    <p className="text-[11px] text-[#888888] font-serif-display italic truncate">
+                      {book.author} • {book.tracks?.length || 1} chapters
+                    </p>
+                    <p className="text-[10px] text-white/40 font-mono mt-0.5 truncate">
+                      {syncInfo.description}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    {onReadBook && (
+                      <button
+                        id={`btn-read-history-${book.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReadBook(book);
+                        }}
+                        className="w-8 h-8 rounded-xl bg-white/[0.04] hover:bg-[#C5A059]/20 text-white/50 hover:text-[#C5A059] flex items-center justify-center transition-all border border-white/10 hover:border-[#C5A059]/40"
+                        title="Read Ebook Text"
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
-                      id={`btn-read-history-${book.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onReadBook(book);
-                      }}
-                      className="w-8 h-8 rounded-xl bg-white/[0.04] hover:bg-[#C5A059]/20 text-white/50 hover:text-[#C5A059] flex items-center justify-center transition-all border border-white/10 hover:border-[#C5A059]/40"
-                      title="Read Ebook Text"
+                      id={`btn-resume-history-${book.id}`}
+                      className="w-8 h-8 rounded-xl bg-white/[0.05] group-hover:bg-[#C5A059] text-white/60 group-hover:text-black flex items-center justify-center transition-all border border-white/10 group-hover:border-[#C5A059]"
+                      title="Play Audio"
                     >
-                      <BookOpen className="w-3.5 h-3.5" />
+                      <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
                     </button>
-                  )}
-                  <button
-                    id={`btn-resume-history-${book.id}`}
-                    className="w-8 h-8 rounded-xl bg-white/[0.05] group-hover:bg-[#C5A059] text-white/60 group-hover:text-black flex items-center justify-center transition-all border border-white/10 group-hover:border-[#C5A059]"
-                    title="Play Audio"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-                  </button>
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
@@ -396,7 +522,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     <p className="text-[10px] text-white/40 truncate">{bm.trackTitle}</p>
                     {bm.note && (
                       <p className="text-xs text-white/80 font-serif-display italic leading-relaxed pt-0.5">
-                        "{bm.note}"
+                        &ldquo;{bm.note}&rdquo;
                       </p>
                     )}
                   </div>
@@ -417,4 +543,5 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     </div>
   );
 };
+
 

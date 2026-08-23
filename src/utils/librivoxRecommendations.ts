@@ -19,13 +19,6 @@ export interface GenreCategory {
 
 export const LIBRIVOX_GENRES: GenreCategory[] = [
   {
-    id: 'all',
-    label: 'All Picks',
-    iconName: 'Sparkles',
-    query: 'sherlock OR austen OR dracula OR poe OR kafka OR wells OR dumas',
-    description: 'All dynamically recommended works from LibriVox archives',
-  },
-  {
     id: 'mystery',
     label: 'Mystery & Detective',
     iconName: 'Search',

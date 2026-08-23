@@ -1,19 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { Audiobook, AudioTrack } from '../types';
-import { Search, X, Play, Clock, Sparkles, BookOpen, SearchX } from 'lucide-react';
+import { Search, X, Play, Clock, Sparkles, BookOpen, SearchX, Download, Check } from 'lucide-react';
+import { resolveFullTracklist } from '../utils/librivoxRecommendations';
+import { downloadAudiobook, isBookDownloaded } from '../utils/offlineStorage';
 
 interface SearchViewProps {
   allBooks: Audiobook[];
   onSelectBook: (book: Audiobook) => void;
   onReadBook?: (book: Audiobook) => void;
+  onUploadEpub?: (book: Audiobook) => void;
 }
 
-export const SearchView: React.FC<SearchViewProps> = ({ allBooks, onSelectBook, onReadBook }) => {
+export const SearchView: React.FC<SearchViewProps> = ({
+  allBooks,
+  onSelectBook,
+  onReadBook,
+  onUploadEpub,
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedTerm, setDebouncedTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<Audiobook[]>([]);
   const [resolvingBookId, setResolvingBookId] = useState<string | null>(null);
+  const [downloadProgressMap, setDownloadProgressMap] = useState<Record<string, number>>({});
+  const [downloadedStatusMap, setDownloadedStatusMap] = useState<Record<string, boolean>>({});
 
   const quickQueries = [
     'Sherlock Holmes',
@@ -34,6 +44,15 @@ export const SearchView: React.FC<SearchViewProps> = ({ allBooks, onSelectBook, 
     }, 350);
     return () => clearTimeout(handler);
   }, [searchTerm]);
+
+  // Check downloaded status
+  const checkStatus = async (books: Audiobook[]) => {
+    const statusObj: Record<string, boolean> = {};
+    for (const b of books) {
+      statusObj[b.id] = await isBookDownloaded(b.id);
+    }
+    setDownloadedStatusMap((prev) => ({ ...prev, ...statusObj }));
+  };
 
   // Perform multi-source search (Local + LibriVox Feed + Internet Archive)
   useEffect(() => {
@@ -57,7 +76,7 @@ export const SearchView: React.FC<SearchViewProps> = ({ allBooks, onSelectBook, 
       const combined: Audiobook[] = [...localMatches];
 
       try {
-        // 1. Query Internet Archive LibriVox Collection (CORS-friendly, rich metadata)
+        // 1. Query Internet Archive LibriVox Collection
         const archiveUrl = `https://archive.org/advancedsearch.php?q=collection:(librivoxaudio)+AND+(title:(${encodeURIComponent(
           query
         )})+OR+creator:(${encodeURIComponent(query)}))&fl[]=identifier,title,creator,description,year,runtime,downloads&sort[]=downloads+desc&output=json&rows=12`;
@@ -68,13 +87,25 @@ export const SearchView: React.FC<SearchViewProps> = ({ allBooks, onSelectBook, 
           if (archiveData.response?.docs && Array.isArray(archiveData.response.docs)) {
             archiveData.response.docs.forEach((doc: any) => {
               const id = doc.identifier;
-              if (id && !combined.some((b) => b.id === id || b.title.toLowerCase() === (doc.title || '').toLowerCase())) {
-                const rawDesc = typeof doc.description === 'string' ? doc.description.replace(/<[^>]*>/g, '').trim() : '';
+              if (
+                id &&
+                !combined.some(
+                  (b) => b.id === id || b.title.toLowerCase() === (doc.title || '').toLowerCase()
+                )
+              ) {
+                const rawDesc =
+                  typeof doc.description === 'string'
+                    ? doc.description.replace(/<[^>]*>/g, '').trim()
+                    : '';
                 combined.push({
                   id,
                   title: doc.title || 'Untitled Work',
-                  author: Array.isArray(doc.creator) ? doc.creator.join(', ') : doc.creator || 'LibriVox Volunteer Narrators',
-                  description: rawDesc || 'Public domain classic recorded by LibriVox volunteers and hosted by the Internet Archive.',
+                  author: Array.isArray(doc.creator)
+                    ? doc.creator.join(', ')
+                    : doc.creator || 'LibriVox Volunteer Narrators',
+                  description:
+                    rawDesc ||
+                    'Public domain classic recorded by LibriVox volunteers and hosted by the Internet Archive.',
                   coverImageUrl: `https://archive.org/services/img/${id}`,
                   language: 'English',
                   totalTimeSecs: typeof doc.runtime === 'string' ? parseRuntimeToSecs(doc.runtime) : 7200,
@@ -123,23 +154,24 @@ export const SearchView: React.FC<SearchViewProps> = ({ allBooks, onSelectBook, 
                   language: b.language || 'English',
                   totalTimeSecs: parseInt(b.totaltimesecs, 10) || 3600,
                   reader: b.sections?.[0]?.readers?.[0]?.display_name || 'LibriVox Reader',
-                  tracks: (b.sections && Array.isArray(b.sections) && b.sections.length > 0)
-                    ? b.sections.map((s: any, idx: number) => ({
-                        id: `sec_${b.id}_${s.id || idx}`,
-                        title: s.title || `Section ${idx + 1}`,
-                        audioUrl: s.listen_url || '',
-                        durationSeconds: parseInt(s.playtime, 10) || 1200,
-                        trackNumber: idx + 1,
-                      }))
-                    : [
-                        {
-                          id: `tr_${b.id}_1`,
-                          title: `${b.title} - Full Audiobook`,
-                          audioUrl: b.url_librivox || '',
-                          durationSeconds: 1800,
-                          trackNumber: 1,
-                        },
-                      ],
+                  tracks:
+                    b.sections && Array.isArray(b.sections) && b.sections.length > 0
+                      ? b.sections.map((s: any, idx: number) => ({
+                          id: `sec_${b.id}_${s.id || idx}`,
+                          title: s.title || `Section ${idx + 1}`,
+                          audioUrl: s.listen_url || '',
+                          durationSeconds: parseInt(s.playtime, 10) || 1200,
+                          trackNumber: idx + 1,
+                        }))
+                      : [
+                          {
+                            id: `tr_${b.id}_1`,
+                            title: `${b.title} - Full Audiobook`,
+                            audioUrl: b.url_librivox || '',
+                            durationSeconds: 1800,
+                            trackNumber: 1,
+                          },
+                        ],
                 });
               }
             });
@@ -152,6 +184,7 @@ export const SearchView: React.FC<SearchViewProps> = ({ allBooks, onSelectBook, 
       if (isMounted) {
         setResults(combined);
         setIsSearching(false);
+        checkStatus(combined);
       }
     };
 
@@ -162,70 +195,50 @@ export const SearchView: React.FC<SearchViewProps> = ({ allBooks, onSelectBook, 
     };
   }, [debouncedTerm, allBooks]);
 
-  // Helper to parse runtimes like "01:23:45"
-  const parseRuntimeToSecs = (runtimeStr: string): number => {
+  const parseRuntimeToSecs = (runtime: string): number => {
     try {
-      const parts = runtimeStr.split(':').map(Number);
+      const parts = runtime.split(':').map((p) => parseInt(p, 10));
       if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
       if (parts.length === 2) return parts[0] * 60 + parts[1];
-    } catch (_) {}
-    return 3600;
+    } catch {
+      // Fallback
+    }
+    return 7200;
   };
 
-  // When clicking on an Internet Archive book, resolve exact MP3 tracks if needed
-  const handleBookClick = async (book: Audiobook) => {
-    // If book already has multiple fully configured tracks, play immediately
-    if (book.tracks.length > 1 && book.tracks[0].audioUrl.endsWith('.mp3')) {
-      onSelectBook(book);
-      return;
-    }
+  const handleDownloadDirect = async (e: React.MouseEvent, book: Audiobook) => {
+    e.stopPropagation();
+    if (downloadProgressMap[book.id] !== undefined || downloadedStatusMap[book.id]) return;
 
-    // Otherwise check metadata from Archive.org to populate exact chapter mp3s
-    setResolvingBookId(book.id);
+    setDownloadProgressMap((prev) => ({ ...prev, [book.id]: 5 }));
     try {
-      const metaRes = await fetch(`https://archive.org/metadata/${book.id}/files`);
-      if (metaRes.ok) {
-        const metaData = await metaRes.json();
-        if (metaData.result && Array.isArray(metaData.result)) {
-          const mp3Files = metaData.result.filter(
-            (f: any) =>
-              typeof f.name === 'string' &&
-              f.name.toLowerCase().endsWith('.mp3') &&
-              !f.name.toLowerCase().includes('vbr') &&
-              !f.name.toLowerCase().includes('sample')
-          );
-
-          if (mp3Files.length > 0) {
-            const enrichedTracks: AudioTrack[] = mp3Files.map((file: any, idx: number) => ({
-              id: `${book.id}_tr_${idx + 1}`,
-              title: file.title || file.name.replace(/_/g, ' ').replace(/\.mp3$/i, ''),
-              audioUrl: `https://archive.org/download/${book.id}/${encodeURIComponent(file.name)}`,
-              durationSeconds: Math.round(parseFloat(file.length)) || 1200,
-              trackNumber: idx + 1,
-            }));
-
-            const updatedBook: Audiobook = {
-              ...book,
-              tracks: enrichedTracks,
-            };
-            setResolvingBookId(null);
-            onSelectBook(updatedBook);
-            return;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('Could not enrich tracks from archive metadata:', e);
+      const resolved = await resolveFullTracklist(book);
+      await downloadAudiobook(resolved, (percent) => {
+        setDownloadProgressMap((prev) => ({ ...prev, [book.id]: percent }));
+      });
+      setDownloadedStatusMap((prev) => ({ ...prev, [book.id]: true }));
+    } catch (err) {
+      console.warn('Search card download error:', err);
+    } finally {
+      setDownloadProgressMap((prev) => {
+        const next = { ...prev };
+        delete next[book.id];
+        return next;
+      });
     }
+  };
 
+  const handleBookClick = async (book: Audiobook) => {
+    setResolvingBookId(book.id);
+    const resolved = await resolveFullTracklist(book);
     setResolvingBookId(null);
-    onSelectBook(book);
+    onSelectBook(resolved);
   };
 
   return (
-    <div id="search-view-container" className="w-full flex flex-col pb-16 text-[#EFEFEF]">
+    <div id="search-view-container" className="w-full flex flex-col pb-24 text-[#EFEFEF]">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-base font-serif-display italic font-semibold text-white tracking-wide">
+        <h1 className="text-xl font-serif-display italic font-bold text-white tracking-wide">
           Search Catalog
         </h1>
       </div>
@@ -266,7 +279,7 @@ export const SearchView: React.FC<SearchViewProps> = ({ allBooks, onSelectBook, 
         ))}
       </div>
 
-      {/* Search Results / Empty State */}
+      {/* Search Results */}
       <div id="search-results-wrapper" className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
         {isSearching ? (
           <div className="flex flex-col items-center justify-center h-48 text-[#888888]">
@@ -278,16 +291,18 @@ export const SearchView: React.FC<SearchViewProps> = ({ allBooks, onSelectBook, 
             <div className="w-12 h-12 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[#C5A059] mb-3 shadow-lg">
               <Sparkles className="w-5 h-5" />
             </div>
-            <h3 className="text-sm font-serif-display italic font-medium text-white">Discover Timeless Audiobooks</h3>
-            <p className="text-xs text-[#888888] mt-1 max-w-[240px] leading-relaxed">
-              Explore thousands of titles, authors, and narrators across classic literature.
+            <h3 className="text-sm font-serif-display italic font-medium text-white">Discover Timeless Audiobooks & Ebooks</h3>
+            <p className="text-xs text-[#888888] mt-1 max-w-[280px] leading-relaxed">
+              Search the public domain collection or upload your own EPUB to read and listen offline.
             </p>
           </div>
         ) : results.length === 0 ? (
-          <div id="search-no-results" className="flex flex-col items-center justify-center h-48 text-white/40 text-center px-4">
-            <SearchX className="w-8 h-8 text-white/20 mb-2" />
-            <h3 className="text-sm font-serif-display italic font-medium text-white">No results found for &ldquo;{debouncedTerm}&rdquo;</h3>
-            <p className="text-xs text-[#888888] mt-1">Try another title or author name.</p>
+          <div id="search-no-results" className="flex flex-col items-center justify-center py-12 text-white/40 text-center px-4 space-y-3">
+            <SearchX className="w-8 h-8 text-white/20" />
+            <div>
+              <h3 className="text-sm font-serif-display italic font-medium text-white">No results found for &ldquo;{debouncedTerm}&rdquo;</h3>
+              <p className="text-xs text-[#888888] mt-1">Try searching with a different author, title, or keyword.</p>
+            </div>
           </div>
         ) : (
           <div id="search-results-list" className="space-y-2">
@@ -296,6 +311,9 @@ export const SearchView: React.FC<SearchViewProps> = ({ allBooks, onSelectBook, 
             </div>
             {results.map((book) => {
               const isResolving = resolvingBookId === book.id;
+              const isDownloaded = !!downloadedStatusMap[book.id];
+              const downloadProg = downloadProgressMap[book.id];
+
               return (
                 <div
                   key={book.id}
@@ -310,8 +328,8 @@ export const SearchView: React.FC<SearchViewProps> = ({ allBooks, onSelectBook, 
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       referrerPolicy="no-referrer"
                       onError={(e) => {
-                        // Fallback placeholder image if coverart fails
-                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=800';
+                        (e.target as HTMLImageElement).src =
+                          'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=800';
                       }}
                     />
                     {isResolving && (
@@ -350,10 +368,11 @@ export const SearchView: React.FC<SearchViewProps> = ({ allBooks, onSelectBook, 
                         <BookOpen className="w-3.5 h-3.5" />
                       </button>
                     )}
+
                     <button
                       id={`btn-play-result-${book.id}`}
                       className="w-8 h-8 rounded-full bg-white/[0.05] group-hover:bg-[#C5A059] text-white/60 group-hover:text-black flex items-center justify-center transition-all border border-white/10 group-hover:border-[#C5A059] group-hover:shadow-[0_0_12px_rgba(197,160,89,0.4)]"
-                      title="Play Audiobook"
+                      title="Open Book Details & Chapters"
                     >
                       {isResolving ? (
                         <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -371,4 +390,3 @@ export const SearchView: React.FC<SearchViewProps> = ({ allBooks, onSelectBook, 
     </div>
   );
 };
-
