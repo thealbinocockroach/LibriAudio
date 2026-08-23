@@ -43,6 +43,7 @@ export interface EbookReaderSettings {
   lineHeight: number; // 1.4, 1.7, 2.0
   columnWidth: 'narrow' | 'normal' | 'wide';
   textAlign: 'left' | 'justify';
+  swipeDirection: 'natural' | 'reversed';
 }
 
 export type HighlightColor = 'gold' | 'emerald' | 'sapphire' | 'amethyst';

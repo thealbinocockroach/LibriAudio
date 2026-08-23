@@ -19,10 +19,7 @@ import {
   Sliders,
   Radio,
   Type,
-  Smartphone,
-  Download,
 } from 'lucide-react';
-import { ApkExportModal } from './ApkExportModal';
 import {
   isCurrentlyFullscreen,
   toggleFullscreenMode,
@@ -85,9 +82,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUploadEpub }) => {
   const [goalMinutes, setGoalMinutesState] = useState<number>(getDailyGoalMinutes());
   const [customGoalInput, setCustomGoalInput] = useState<number>(goalMinutes);
   const [goalSavedNotification, setGoalSavedNotification] = useState(false);
-
-  // Android APK export modal state
-  const [showApkModal, setShowApkModal] = useState(false);
 
   useEffect(() => {
     const savedName = localStorage.getItem('libriaudio_profile_name');
@@ -656,39 +650,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUploadEpub }) => {
             Clear Local Data Cache
           </button>
         </div>
-
-        {/* Turn into Android App / APK Export Card */}
-        <div className="bg-gradient-to-br from-[#161616] to-[#0c0c0c] border border-[#C5A059]/30 rounded-2xl p-6 shadow-xl">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-xl bg-[#C5A059]/20 border border-[#C5A059]/40 flex items-center justify-center text-[#C5A059]">
-              <Smartphone className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-semibold text-white">Turn into Android App (APK)</h3>
-                <span className="px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wider font-bold bg-[#C5A059]/20 text-[#C5A059] border border-[#C5A059]/40">
-                  Flutter Ready
-                </span>
-              </div>
-              <p className="text-xs text-white/60">
-                Download the full Android project zip package and compile your production APK in 1 command.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setShowApkModal(true)}
-            className="w-full sm:w-auto px-6 py-3 rounded-xl bg-[#C5A059] hover:bg-[#d4af65] text-black font-semibold text-xs transition-all shadow-[0_0_20px_rgba(197,160,89,0.3)] flex items-center justify-center gap-2"
-          >
-            <Download className="w-4 h-4" />
-            <span>Export Android APK & Project Files</span>
-          </button>
-        </div>
       </div>
-
-      <ApkExportModal
-        isOpen={showApkModal}
-        onClose={() => setShowApkModal(false)}
-      />
     </div>
   );
 };

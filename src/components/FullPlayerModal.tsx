@@ -295,7 +295,7 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
 
           {/* Large Artwork Display */}
           <div id="player-cover-container" className="relative my-auto flex flex-col items-center z-10 py-2">
-            <div className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] border border-white/10 ring-1 ring-white/5 bg-[#111111] group">
+            <div className={`relative w-48 h-48 sm:w-56 sm:h-56 rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] border border-white/10 ring-1 ring-white/5 bg-[#111111] group ${isBuffering ? 'animate-pulse' : ''}`}>
               <img
                 src={currentBook.coverImageUrl}
                 alt={currentBook.title}
@@ -389,9 +389,7 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
                 onClick={onTogglePlayPause}
                 className="w-15 h-15 sm:w-16 sm:h-16 rounded-full bg-[#C5A059] hover:bg-[#d4af65] text-black flex items-center justify-center shadow-[0_0_30px_rgba(197,160,89,0.35)] transition-all transform active:scale-95 cursor-pointer"
               >
-                {isBuffering ? (
-                  <div className="w-6 h-6 border-3 border-black border-t-transparent rounded-full animate-spin" />
-                ) : isPlaying ? (
+                {isPlaying ? (
                   <Pause className="w-6 h-6 fill-current" />
                 ) : (
                   <Play className="w-6 h-6 fill-current ml-1" />

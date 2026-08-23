@@ -5,8 +5,6 @@ import {
   BookOpen,
   Settings2,
   Upload,
-  Volume2,
-  VolumeX,
   ChevronLeft,
   ChevronRight,
   List,
@@ -43,6 +41,7 @@ import {
   EbookAnnotation,
   EbookBookmark,
   DictionaryResult,
+  PlayerState,
 } from '../types';
 import { getEbookCloudUrl, CLASSIC_EBOOKS, findClassicEbook } from '../data/ebookData';
 import { parseUploadedEpub, splitManuscriptIntoChapters } from '../utils/epubParser';
@@ -63,6 +62,13 @@ interface GutenbergReaderModalProps {
   book: Audiobook;
   onClose: () => void;
   onUploadNewEpub?: (book: Audiobook) => void;
+  playerState?: PlayerState;
+  onTogglePlayPause?: () => void;
+  onSeek?: (seconds: number) => void;
+  onRewind15?: () => void;
+  onForward30?: () => void;
+  onSkipNext?: () => void;
+  onSetSpeed?: (speed: number) => void;
 }
 
 const DEFAULT_SETTINGS: EbookReaderSettings = {
@@ -72,6 +78,7 @@ const DEFAULT_SETTINGS: EbookReaderSettings = {
   lineHeight: 1.75,
   columnWidth: 'normal',
   textAlign: 'left',
+  swipeDirection: 'natural',
 };
 
 const HIGHLIGHT_COLORS: { id: HighlightColor; name: string; bg: string; border: string; dot: string }[] = [
@@ -86,6 +93,13 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
   book,
   onClose,
   onUploadNewEpub,
+  playerState,
+  onTogglePlayPause,
+  onSeek,
+  onRewind15,
+  onForward30,
+  onSkipNext,
+  onSetSpeed,
 }) => {
   const [currentBook, setCurrentBook] = useState<Audiobook>(book);
   const [htmlContent, setHtmlContent] = useState<string | null>(null);
@@ -148,12 +162,6 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
   const [searchMatchIndex, setSearchMatchIndex] = useState(0);
   const [searchFilterChapterOnly, setSearchFilterChapterOnly] = useState(false);
 
-  // Read Aloud / TTS State
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isSpeechPaused, setIsSpeechPaused] = useState(false);
-  const [speechRate, setSpeechRate] = useState<number>(1.0);
-  const [showSpeechControls, setShowSpeechControls] = useState(false);
-
   // Reading progress stats
   const [scrollProgress, setScrollProgress] = useState(0);
   const [copiedState, setCopiedState] = useState(false);
@@ -164,9 +172,9 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const contentContainerRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLElement>(null);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const sessionStartRef = useRef<number>(Date.now());
   const sessionSecondsRef = useRef<number>(0);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastFlushedSecondsRef = useRef<number>(0);
 
   // Sync currentBook when prop changes
@@ -230,14 +238,6 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
     });
   };
 
-  // Speech cleanup
-  useEffect(() => {
-    return () => {
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-    };
-  }, [currentBook, isOpen]);
 
   // Active Reading Session Timer & True Duration Logging
   useEffect(() => {
@@ -604,80 +604,6 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
     }
   };
 
-  // Read Aloud Selected Text
-  const speakSelectedText = (text: string) => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = speechRate;
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      setIsSpeechPaused(false);
-    };
-    utteranceRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
-    setIsSpeaking(true);
-    setIsSpeechPaused(false);
-    setShowSpeechControls(true);
-    setSelectionMenu(null);
-  };
-
-  // Toggle Full Chapter Read Aloud
-  const toggleSpeechNarration = () => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      return;
-    }
-
-    if (isSpeaking) {
-      if (isSpeechPaused) {
-        window.speechSynthesis.resume();
-        setIsSpeechPaused(false);
-      } else {
-        window.speechSynthesis.cancel();
-        setIsSpeaking(false);
-        setIsSpeechPaused(false);
-        setShowSpeechControls(false);
-      }
-      return;
-    }
-
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = htmlContent || '';
-    const cleanText = tempDiv.textContent || tempDiv.innerText || '';
-
-    if (!cleanText.trim()) return;
-
-    const utterance = new SpeechSynthesisUtterance(cleanText.substring(0, 20000));
-    utterance.rate = speechRate;
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      setIsSpeechPaused(false);
-      setShowSpeechControls(false);
-    };
-    utterance.onerror = () => {
-      setIsSpeaking(false);
-      setIsSpeechPaused(false);
-    };
-
-    utteranceRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
-    setIsSpeaking(true);
-    setIsSpeechPaused(false);
-    setShowSpeechControls(true);
-  };
-
-  const pauseSpeechNarration = () => {
-    if (window.speechSynthesis.speaking && !isSpeechPaused) {
-      window.speechSynthesis.pause();
-      setIsSpeechPaused(true);
-    } else if (isSpeechPaused) {
-      window.speechSynthesis.resume();
-      setIsSpeechPaused(false);
-    }
-  };
-
   // Copy selection
   const handleCopySelection = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -1025,18 +951,7 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
                   </span>
                 </>
               )}
-              {sessionReadingSeconds > 5 && (
-                <>
-                  <span className="hidden md:inline">•</span>
-                  <span
-                    id="badge-reader-session-time"
-                    className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#C5A059]/15 text-[#C5A059] border border-[#C5A059]/30 text-[10px] font-mono font-medium"
-                  >
-                    <Clock className="w-3 h-3" />
-                    <span>Reading {formatTrueDuration(sessionReadingSeconds)}</span>
-                  </span>
-                </>
-              )}
+              {/* Session timer removed */}
             </div>
           </div>
         </div>
@@ -1082,16 +997,6 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
                 >
                   <BookIcon className="w-4 h-4 text-[#C5A059]" />
                   <span>Dictionary Lookup</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setShowThreeDotMenu(false);
-                    toggleSpeechNarration();
-                  }}
-                  className="w-full px-4 py-2.5 text-left text-xs flex items-center gap-2.5 hover:bg-white/10 transition-colors text-white/90"
-                >
-                  {isSpeaking ? <VolumeX className="w-4 h-4 text-[#C5A059]" /> : <Volume2 className="w-4 h-4 text-[#C5A059]" />}
-                  <span>{isSpeaking ? 'Stop Narration' : 'Read Aloud (TTS)'}</span>
                 </button>
                 <div className="my-1 border-t border-white/10" />
                 {annotations.length > 0 && (
@@ -1140,7 +1045,40 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
           id="reader-content-scroll"
           onScroll={handleScroll}
           onMouseUp={handleTextSelection}
-          onTouchEnd={handleTextSelection}
+          onTouchStart={(e) => {
+            const touch = e.touches[0];
+            touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+          }}
+          onTouchEnd={(e) => {
+            handleTextSelection();
+            if (!touchStartRef.current) return;
+            const touch = e.changedTouches[0];
+            const deltaX = touch.clientX - touchStartRef.current.x;
+            const deltaY = touch.clientY - touchStartRef.current.y;
+            const deltaTime = Date.now() - touchStartRef.current.time;
+            touchStartRef.current = null;
+
+            // If it's a tap (short duration, minimal movement), toggle chapters sidebar
+            if (Math.abs(deltaX) < 15 && Math.abs(deltaY) < 15 && deltaTime < 300) {
+              const width = window.innerWidth;
+              // If tapped on left edge (outer 25%), go prev or toggle TOC. If right edge, go next.
+              // User requirement: "remove the previous and next options just let me touch it then it will toggle the chapters then i jump there"
+              setActiveSidebarTab(activeSidebarTab === 'chapters' ? null : 'chapters');
+              return;
+            }
+
+            // Horizontal Swipe for Chapter Navigation
+            if (Math.abs(deltaX) > 60 && Math.abs(deltaY) < Math.abs(deltaX) && currentBook.ebookChapters && currentBook.ebookChapters.length > 1) {
+              const isNatural = settings.swipeDirection !== 'reversed';
+              // Natural: swipe left (deltaX < 0) -> next chapter, swipe right (deltaX > 0) -> prev chapter
+              const goNext = isNatural ? deltaX < 0 : deltaX > 0;
+              if (goNext && currentChapterIndex < currentBook.ebookChapters.length - 1) {
+                setCurrentChapterIndex((prev) => prev + 1);
+              } else if (!goNext && currentChapterIndex > 0) {
+                setCurrentChapterIndex((prev) => prev - 1);
+              }
+            }
+          }}
           onClick={handleContentClick}
           className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-black/20 pb-32 transition-all relative"
         >
@@ -1572,15 +1510,6 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
             <span className="text-[11px]">Define</span>
           </button>
 
-          {/* Read Aloud Selection */}
-          <button
-            onClick={() => speakSelectedText(selectionMenu.text)}
-            className="p-1.5 rounded-lg hover:bg-white/15 flex items-center gap-1"
-            title="Read Selection Aloud"
-          >
-            <Volume2 className="w-3.5 h-3.5" />
-          </button>
-
           {/* Copy Text */}
           <button
             onClick={() => handleCopySelection(selectionMenu.text)}
@@ -1885,56 +1814,33 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Swipe / Scroll Chapter Navigation Option */}
+            <div className="pt-2 border-t border-white/10">
+              <span className="text-[10px] font-medium opacity-70 mb-1.5 block uppercase tracking-wider">Swipe Direction</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  { id: 'natural', label: 'Left / Right (Natural)' },
+                  { id: 'reversed', label: 'Right / Left (Inverted)' },
+                ].map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => updateSettings({ swipeDirection: s.id as any })}
+                    className={`py-1.5 px-2 rounded-xl border text-[11px] text-center transition-all ${
+                      settings.swipeDirection === s.id
+                        ? 'bg-[#C5A059] text-black font-semibold border-[#C5A059]'
+                        : 'bg-white/5 border-white/10 opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Read Aloud Floating Bottom Controller Bar */}
-      {showSpeechControls && (
-        <div className="fixed bottom-18 left-1/2 -translate-x-1/2 z-40 bg-[#141414]/95 backdrop-blur-md border border-[#C5A059]/40 px-4 py-2 rounded-full shadow-2xl flex items-center gap-3 text-white font-sans text-xs animate-in slide-in-from-bottom-2">
-          <div className="flex items-center gap-1.5 pr-2 border-r border-white/15">
-            <Volume2 className="w-4 h-4 text-[#C5A059] animate-pulse" />
-            <span className="text-[11px] font-semibold text-[#C5A059]">Narrator</span>
-          </div>
-
-          <button
-            onClick={pauseSpeechNarration}
-            className="p-1.5 rounded-full bg-[#C5A059] text-black hover:bg-[#d4af65] transition-colors"
-          >
-            {isSpeechPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-          </button>
-
-          <button
-            onClick={() => {
-              window.speechSynthesis.cancel();
-              setIsSpeaking(false);
-              setIsSpeechPaused(false);
-              setShowSpeechControls(false);
-            }}
-            className="p-1.5 rounded-full hover:bg-white/10 transition-colors opacity-70 hover:opacity-100"
-            title="Stop Speech"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-
-          <div className="flex items-center gap-1 pl-2 border-l border-white/15">
-            {[0.8, 1.0, 1.25, 1.5].map((rate) => (
-              <button
-                key={rate}
-                onClick={() => {
-                  setSpeechRate(rate);
-                  if (utteranceRef.current) utteranceRef.current.rate = rate;
-                }}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${
-                  speechRate === rate ? 'bg-[#C5A059] text-black font-bold' : 'opacity-60 hover:opacity-100'
-                }`}
-              >
-                {rate}x
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Bottom Essentials & Chapter Navigation Bar */}
       <div className="fixed bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-[#121212]/95 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10 shadow-2xl text-white font-sans text-xs z-30">
@@ -1950,38 +1856,6 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
           title="Table of Contents"
         >
           <List className="w-4 h-4" />
-        </button>
-
-        <div className="h-4 w-px bg-white/10 mx-0.5" />
-
-        {/* Previous Chapter */}
-        <button
-          disabled={!hasChapters || currentChapterIndex === 0}
-          onClick={() => hasChapters && setCurrentChapterIndex((i) => Math.max(0, i - 1))}
-          className="p-1.5 rounded-full hover:bg-white/10 disabled:opacity-25 disabled:hover:bg-transparent transition-colors flex items-center gap-1"
-          title="Previous Chapter"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          <span className="hidden sm:inline text-[11px]">Prev</span>
-        </button>
-
-        <div className="flex items-center gap-2 px-2.5 border-x border-white/10 font-mono text-[11px]">
-          <span className="text-[#C5A059] font-medium">
-            {hasChapters ? `Ch. ${currentChapterIndex + 1} / ${currentBook.ebookChapters!.length}` : 'Manuscript'}
-          </span>
-          <span className="opacity-40">•</span>
-          <span className="opacity-70">{scrollProgress}%</span>
-        </div>
-
-        {/* Next Chapter */}
-        <button
-          disabled={!hasChapters || currentChapterIndex === currentBook.ebookChapters!.length - 1}
-          onClick={() => hasChapters && setCurrentChapterIndex((i) => Math.min(currentBook.ebookChapters!.length - 1, i + 1))}
-          className="p-1.5 rounded-full hover:bg-white/10 disabled:opacity-25 disabled:hover:bg-transparent transition-colors flex items-center gap-1"
-          title="Next Chapter"
-        >
-          <span className="hidden sm:inline text-[11px]">Next</span>
-          <ChevronRight className="w-4 h-4" />
         </button>
 
         <div className="h-4 w-px bg-white/10 mx-0.5" />
@@ -2032,6 +1906,34 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
         >
           <Settings2 className="w-4 h-4" />
         </button>
+
+        {/* Audiobook Playback Controls while reading */}
+        {onTogglePlayPause && (
+          <>
+            <div className="h-4 w-px bg-white/10 mx-0.5" />
+            <button
+              onClick={onRewind15}
+              className="p-1.5 rounded-full hover:bg-white/10 text-white/80 transition-colors"
+              title="Rewind 15s"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onTogglePlayPause}
+              className="p-2 rounded-full bg-[#C5A059] text-black hover:bg-[#d4af65] transition-all shadow-md active:scale-95"
+              title={playerState?.isPlaying ? 'Pause Audiobook' : 'Play Audiobook'}
+            >
+              {playerState?.isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
+            </button>
+            <button
+              onClick={onForward30}
+              className="p-1.5 rounded-full hover:bg-white/10 text-white/80 transition-colors"
+              title="Forward 30s"
+            >
+              <RotateCcw className="w-4 h-4 scale-x-[-1]" />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

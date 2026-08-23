@@ -111,7 +111,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     let isMounted = true;
 
     if (selectedGenre.id === 'all') {
-      const uniqueBooks = Array.from(new Map(books.map(b => [b.title, b])).values());
+      const uniqueBooks: Audiobook[] = Array.from(new Map<string, Audiobook>(books.map(b => [b.title, b])).values());
       setGenreBooks(uniqueBooks);
       checkStatusForBooks(uniqueBooks);
       return;
@@ -122,14 +122,14 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       try {
         const fetched = await fetchLibriVoxCategory(selectedGenre.query, 10);
         if (isMounted && fetched.length > 0) {
-          const uniqueFetched = Array.from(new Map(fetched.map(b => [b.title, b])).values());
+          const uniqueFetched: Audiobook[] = Array.from(new Map<string, Audiobook>(fetched.map(b => [b.title, b])).values());
           setGenreBooks(uniqueFetched);
           checkStatusForBooks(uniqueFetched);
         }
       } catch (err) {
         console.warn(`Genre fetch error for ${selectedGenre.label}:`, err);
         if (isMounted) {
-          const uniqueBooks = Array.from(new Map(books.map(b => [b.title, b])).values());
+          const uniqueBooks: Audiobook[] = Array.from(new Map<string, Audiobook>(books.map(b => [b.title, b])).values());
           setGenreBooks(uniqueBooks);
           checkStatusForBooks(uniqueBooks);
         }
@@ -286,7 +286,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             </span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {Array.from(new Map(history.map(b => [b.id, b])).values()).slice(0, 6).map((book) => (
+            {Array.from(new Map<string, Audiobook>(history.map(b => [b.id, b])).values()).slice(0, 6).map((book) => (
               <div
                 key={`jump-${book.id}`}
                 onClick={() => handleBookClick(book)}

@@ -30,6 +30,7 @@ import {
   getBookDownloadSummary,
   getAllOfflineEbooks,
   deleteOfflineEbook,
+  deleteDownloadedBook,
 } from '../utils/offlineStorage';
 import { getAllBookNotes, deleteBookNote, exportBookNotesAsMarkdown } from '../utils/notesStorage';
 import {
@@ -74,11 +75,41 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onJumpToBookmark,
   onOpenOfflineManager,
 }) => {
-  const [tab, setTab] = useState<'saved' | 'offline' | 'history' | 'bookmarks'>('saved');
+  const [tab, setTab] = useState<'reading' | 'read' | 'unread' | 'offline' | 'history' | 'bookmarks'>('reading');
   const [historySubTab, setHistorySubTab] = useState<'reading' | 'audio'>('reading');
-  const [offlineSubTab, setOfflineSubTab] = useState<'audiobooks' | 'ebooks'>('audiobooks');
-  const [offlineEbooks, setOfflineEbooks] = useState<OfflineEbookData[]>([]);
-  const [readingSessions, setReadingSessions] = useState<ReadingSessionRecord[]>([]);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelect = (bookId: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(bookId)) {
+      newSelected.delete(bookId);
+    } else {
+      newSelected.add(bookId);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const deleteSelected = async () => {
+    await Promise.all(Array.from(selectedIds).map(id => deleteDownloadedBook(id)));
+    setSelectedIds(new Set());
+    setIsSelectMode(false);
+    refreshOfflineEbooks(); 
+  };
+
+  // Function to sort books by last visited time
+  const sortByLastVisited = (books: Audiobook[]) => {
+    return [...books].sort((a, b) => (b.lastVisited || 0) - (a.lastVisited || 0));
+  };
+
+  // Logic to categorize books
+  const allBooks = Array.from(
+    new Map([...savedBooks, ...history, ...offlineBooks.map((o) => o.book)].map((b) => [b.id, b])).values()
+  );
+
+  const readingBooks = sortByLastVisited(allBooks.filter(b => b.status === 'reading'));
+  const readBooks = sortByLastVisited(allBooks.filter(b => b.status === 'read'));
+  const unreadBooks = sortByLastVisited(allBooks.filter(b => !b.status || b.status === 'unread'));
   const [allNotes, setAllNotes] = useState<BookNote[]>([]);
   const [notesSearch, setNotesSearch] = useState('');
   const [copiedMarkdown, setCopiedMarkdown] = useState(false);
@@ -252,27 +283,48 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       {/* Library Sub-Navigation Tabs */}
       <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-white/[0.03] border border-white/10 mb-4 overflow-x-auto scrollbar-none">
         <button
-          id="tab-library-saved"
-          onClick={() => setTab('saved')}
+          id="tab-library-reading"
+          onClick={() => setTab('reading')}
           className={`flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-semibold transition-all whitespace-nowrap ${
-            tab === 'saved'
+            tab === 'reading'
               ? 'bg-[#C5A059] text-black shadow-md'
               : 'text-white/60 hover:text-white hover:bg-white/[0.04]'
           }`}
         >
-          Saved ({savedBooks.length})
+          Reading ({readingBooks.length})
+        </button>
+        <button
+          id="tab-library-read"
+          onClick={() => setTab('read')}
+          className={`flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-semibold transition-all whitespace-nowrap ${
+            tab === 'read'
+              ? 'bg-[#C5A059] text-black shadow-md'
+              : 'text-white/60 hover:text-white hover:bg-white/[0.04]'
+          }`}
+        >
+          Read ({readBooks.length})
+        </button>
+        <button
+          id="tab-library-unread"
+          onClick={() => setTab('unread')}
+          className={`flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-semibold transition-all whitespace-nowrap ${
+            tab === 'unread'
+              ? 'bg-[#C5A059] text-black shadow-md'
+              : 'text-white/60 hover:text-white hover:bg-white/[0.04]'
+          }`}
+        >
+          Unread ({unreadBooks.length})
         </button>
         <button
           id="tab-library-offline"
           onClick={() => setTab('offline')}
-          className={`flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-semibold transition-all whitespace-nowrap flex items-center justify-center gap-1 ${
+          className={`flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-semibold transition-all whitespace-nowrap ${
             tab === 'offline'
               ? 'bg-[#C5A059] text-black shadow-md'
               : 'text-white/60 hover:text-white hover:bg-white/[0.04]'
           }`}
         >
-          <Download className="w-3 h-3" />
-          <span>Offline ({readyOffline.length + offlineEbooks.length})</span>
+          Offline
         </button>
         <button
           id="tab-library-history"
@@ -298,88 +350,60 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </button>
       </div>
 
-      {/* TAB 1: Saved Audiobooks */}
-      {tab === 'saved' && (
-        <div id="library-saved-section" className="space-y-2">
-          {savedBooks.length === 0 ? (
-            <div className="p-8 rounded-2xl bg-white/[0.02] border border-white/[0.06] text-center flex flex-col items-center">
-              <div className="w-10 h-10 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[#C5A059] mb-2">
-                <Bookmark className="w-4 h-4" />
+      {/* TAB: Reading Books */}
+      {tab === 'reading' && (
+        <div id="library-reading-section" className="space-y-2">
+          {readingBooks.map((book) => (
+            <div
+              key={`reading-${book.id}`}
+              onClick={() => onSelectBook(book)}
+              className="flex items-center gap-3 p-2.5 rounded-2xl bg-[#111111]/90 border border-white/[0.07] hover:border-[#C5A059]/40 hover:bg-[#161616] transition-all cursor-pointer"
+            >
+              <img src={book.coverImageUrl} alt={book.title} className="w-12 h-16 rounded-lg object-cover" />
+              <div className="flex-1">
+                <h4 className="text-sm font-medium text-white">{book.title}</h4>
+                <p className="text-xs text-white/60">{book.author}</p>
               </div>
-              <p className="text-xs font-serif-display italic font-medium text-white/70">Your saved list is empty</p>
-              <p className="text-[10px] text-white/40 mt-1 max-w-[220px] leading-relaxed">
-                Bookmark audiobooks from the Explore feed to curate your private bookshelf.
-              </p>
             </div>
-          ) : (
-            savedBooks.map((book) => {
-              const syncInfo = getBookSyncStatus(
-                book,
-                offlineBooks,
-                currentBook,
-                isPlaying,
-                downloadSummaries[book.id]
-              );
+          ))}
+        </div>
+      )}
 
-              return (
-                <div
-                  key={`saved-${book.id}`}
-                  id={`saved-item-${book.id}`}
-                  onClick={() => onSelectBook(book)}
-                  className="flex items-center gap-3 p-2.5 rounded-2xl bg-[#111111]/90 border border-white/[0.07] hover:border-[#C5A059]/40 hover:bg-[#161616] transition-all cursor-pointer group"
-                >
-                  {/* Book Cover with Visual Sync Status Overlay Badge */}
-                  <div className="relative shrink-0 w-12 h-16 sm:w-14 sm:h-20 rounded-xl overflow-hidden bg-[#1a1a1a] border border-white/10 shadow-sm group-hover:border-[#C5A059]/40 transition-colors">
-                    <img
-                      src={book.coverImageUrl}
-                      alt={book.title}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                    <CoverSyncBadge syncInfo={syncInfo} />
-                  </div>
+      {/* TAB: Read Books */}
+      {tab === 'read' && (
+        <div id="library-read-section" className="space-y-2">
+          {readBooks.map((book) => (
+            <div
+              key={`read-${book.id}`}
+              onClick={() => onSelectBook(book)}
+              className="flex items-center gap-3 p-2.5 rounded-2xl bg-[#111111]/90 border border-white/[0.07] hover:border-[#C5A059]/40 hover:bg-[#161616] transition-all cursor-pointer"
+            >
+              <img src={book.coverImageUrl} alt={book.title} className="w-12 h-16 rounded-lg object-cover" />
+              <div className="flex-1">
+                <h4 className="text-sm font-medium text-white">{book.title}</h4>
+                <p className="text-xs text-white/60">{book.author}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <h4 className="text-xs sm:text-sm font-serif-display italic font-medium text-[#EFEFEF] truncate group-hover:text-[#C5A059] transition-colors">
-                        {book.title}
-                      </h4>
-                      <InlineSyncBadge syncInfo={syncInfo} />
-                    </div>
-                    <p className="text-[11px] text-[#888888] font-serif-display italic truncate">
-                      {book.author} • {book.tracks?.length || 1} chapters
-                    </p>
-                    <p className="text-[10px] text-white/40 font-mono mt-0.5 truncate">
-                      {syncInfo.description}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    {onReadBook && (
-                      <button
-                        id={`btn-read-saved-${book.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onReadBook(book);
-                        }}
-                        className="w-8 h-8 rounded-xl bg-white/[0.04] hover:bg-[#C5A059]/20 text-white/50 hover:text-[#C5A059] flex items-center justify-center transition-all border border-white/10 hover:border-[#C5A059]/40"
-                        title="Read Ebook Text"
-                      >
-                        <BookOpen className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    <button
-                      id={`btn-play-saved-${book.id}`}
-                      className="w-8 h-8 rounded-xl bg-white/[0.05] group-hover:bg-[#C5A059] text-white/60 group-hover:text-black flex items-center justify-center transition-all shrink-0 border border-white/10 group-hover:border-[#C5A059]"
-                      title={syncInfo.status === 'cached' ? 'Play from Local Cache' : 'Stream Audiobook'}
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })
-          )}
+      {/* TAB: Unread Books */}
+      {tab === 'unread' && (
+        <div id="library-unread-section" className="space-y-2">
+          {unreadBooks.map((book) => (
+            <div
+              key={`unread-${book.id}`}
+              onClick={() => onSelectBook(book)}
+              className="flex items-center gap-3 p-2.5 rounded-2xl bg-[#111111]/90 border border-white/[0.07] hover:border-[#C5A059]/40 hover:bg-[#161616] transition-all cursor-pointer"
+            >
+              <img src={book.coverImageUrl} alt={book.title} className="w-12 h-16 rounded-lg object-cover" />
+              <div className="flex-1">
+                <h4 className="text-sm font-medium text-white">{book.title}</h4>
+                <p className="text-xs text-white/60">{book.author}</p>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -413,6 +437,25 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
           {offlineSubTab === 'audiobooks' && (
             <div className="space-y-2">
+              <div className="flex items-center justify-between pb-2">
+                <button
+                  onClick={() => {
+                    setIsSelectMode(!isSelectMode);
+                    setSelectedIds(new Set());
+                  }}
+                  className="text-xs text-white/60 hover:text-white"
+                >
+                  {isSelectMode ? 'Cancel' : 'Select'}
+                </button>
+                {isSelectMode && selectedIds.size > 0 && (
+                  <button
+                    onClick={deleteSelected}
+                    className="text-xs text-rose-400 hover:text-rose-300 font-semibold"
+                  >
+                    Delete {selectedIds.size} Selected
+                  </button>
+                )}
+              </div>
               {readyOffline.length === 0 ? (
                 <div className="p-8 rounded-2xl bg-white/[0.02] border border-white/[0.06] text-center flex flex-col items-center">
                   <div className="w-10 h-10 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[#C5A059] mb-2">
@@ -448,9 +491,18 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     <div
                       key={`offline-${item.bookId}`}
                       id={`offline-item-${item.bookId}`}
-                      onClick={() => onSelectBook(item.book)}
-                      className="flex items-center gap-3 p-2.5 rounded-2xl bg-[#111111]/90 border border-white/[0.07] hover:border-[#C5A059]/40 hover:bg-[#161616] transition-all cursor-pointer group"
+                      onClick={() => isSelectMode ? toggleSelect(item.bookId) : onSelectBook(item.book)}
+                      className={`flex items-center gap-3 p-2.5 rounded-2xl border transition-all cursor-pointer group ${
+                        isSelectMode && selectedIds.has(item.bookId) 
+                          ? 'bg-[#C5A059]/10 border-[#C5A059]' 
+                          : 'bg-[#111111]/90 border-white/[0.07] hover:border-[#C5A059]/40 hover:bg-[#161616]'
+                      }`}
                     >
+                      {isSelectMode && (
+                        <div className={`w-5 h-5 rounded border flex items-center justify-center ${selectedIds.has(item.bookId) ? 'bg-[#C5A059] border-[#C5A059]' : 'border-white/20'}`}>
+                          {selectedIds.has(item.bookId) && <Check className="w-3 h-3 text-black" />}
+                        </div>
+                      )}
                       {/* Book Cover with Visual Sync Status Overlay Badge */}
                       <div className="relative shrink-0 w-12 h-16 sm:w-14 sm:h-20 rounded-xl overflow-hidden bg-[#1a1a1a] border border-white/10 shadow-sm group-hover:border-[#C5A059]/40 transition-colors">
                         <img
@@ -524,8 +576,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     author: ebook.author,
                     description: '',
                     coverImageUrl: ebook.coverImageUrl,
-                    category: 'Classic Literature',
-                    totalDuration: 'Ebook',
+                    language: 'en',
+                    totalTimeSecs: 1800,
                     tracks: [],
                     ebookChapters: ebook.chapters,
                   };
@@ -666,8 +718,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     author: session.bookAuthor,
                     description: '',
                     coverImageUrl: session.coverImageUrl,
-                    category: 'Classic Literature',
-                    totalDuration: 'Ebook',
+                    language: 'en',
+                    totalTimeSecs: 1800,
                     tracks: [],
                   };
 

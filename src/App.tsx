@@ -716,6 +716,13 @@ export default function App() {
           isOpen={showEbookReader}
           book={readingBook}
           onClose={() => setShowEbookReader(false)}
+          playerState={playerState}
+          onTogglePlayPause={handleTogglePlayPause}
+          onSeek={handleSeek}
+          onRewind15={handleRewind15}
+          onForward30={handleForward30}
+          onSkipNext={handleSkipNext}
+          onSetSpeed={handleSetSpeed}
         />
       )}
 

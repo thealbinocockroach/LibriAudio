@@ -33,7 +33,7 @@ export const MiniPlayerWidget: React.FC<MiniPlayerWidgetProps> = ({
     >
       <div className="flex items-center gap-4 p-2 sm:p-3">
         {/* Cover thumbnail */}
-        <div className="relative w-10 h-10 rounded-md overflow-hidden shrink-0 bg-[#0a0a0a]">
+        <div className={`relative w-10 h-10 rounded-md overflow-hidden shrink-0 bg-[#0a0a0a] ${isBuffering ? 'animate-pulse' : ''}`}>
           <img
             src={currentBook.coverImageUrl}
             alt={currentBook.title}
@@ -62,9 +62,7 @@ export const MiniPlayerWidget: React.FC<MiniPlayerWidgetProps> = ({
             onClick={onTogglePlayPause}
             className="w-10 h-10 flex items-center justify-center text-white hover:text-[#C5A059] transition-colors active:scale-95 shrink-0"
           >
-            {isBuffering ? (
-              <div className="w-5 h-5 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
-            ) : isPlaying ? (
+            {isPlaying ? (
               <Pause className="w-6 h-6 fill-current" />
             ) : (
               <Play className="w-6 h-6 fill-current ml-0.5" />

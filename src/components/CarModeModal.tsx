@@ -111,9 +111,7 @@ export const CarModeModal: React.FC<CarModeModalProps> = ({
             onClick={onTogglePlayPause}
             className="w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-[#C5A059] hover:bg-[#d4af65] text-black shadow-[0_0_40px_rgba(197,160,89,0.5)] active:scale-90 flex items-center justify-center transition-all"
           >
-            {isBuffering ? (
-              <div className="w-12 h-12 border-4 border-black border-t-transparent rounded-full animate-spin" />
-            ) : isPlaying ? (
+            {isPlaying ? (
               <Pause className="w-12 h-12 fill-current" />
             ) : (
               <Play className="w-12 h-12 fill-current ml-2" />
