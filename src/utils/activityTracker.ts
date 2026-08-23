@@ -1,4 +1,4 @@
-import { Audiobook } from '../types';
+import { Audiobook, ReadingSessionRecord } from '../types';
 
 export interface BookActivity {
   bookId: string;
@@ -15,6 +15,8 @@ export interface BookActivity {
   currentTrackTitle?: string;
   currentAudioTime?: number;
   lastReadChapterIndex?: number;
+  lastReadChapterTitle?: string;
+  lastScrollPercentage?: number;
   totalChapters?: number;
 }
 
@@ -27,9 +29,11 @@ export interface DailyActivityLog {
 export interface ActivityDatabase {
   books: Record<string, BookActivity>;
   dailyLogs: Record<string, DailyActivityLog>;
+  readingSessions: ReadingSessionRecord[];
 }
 
 const STORAGE_KEY = 'libriaudio_true_activity_v1';
+const SESSIONS_STORAGE_KEY = 'libriaudio_reading_sessions_v1';
 
 function getTodayKey(): string {
   const now = new Date();
@@ -39,17 +43,19 @@ function getTodayKey(): string {
 function loadActivityDb(): ActivityDatabase {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return {
-        books: parsed.books || {},
-        dailyLogs: parsed.dailyLogs || {},
-      };
-    }
+    const rawSessions = localStorage.getItem(SESSIONS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const sessions = rawSessions ? JSON.parse(rawSessions) : [];
+
+    return {
+      books: parsed.books || {},
+      dailyLogs: parsed.dailyLogs || {},
+      readingSessions: Array.isArray(sessions) ? sessions : [],
+    };
   } catch (e) {
     console.warn('Failed to load activity db:', e);
   }
-  return { books: {}, dailyLogs: {} };
+  return { books: {}, dailyLogs: {}, readingSessions: [] };
 }
 
 let memoryDb: ActivityDatabase = loadActivityDb();
@@ -60,7 +66,14 @@ if (typeof window !== 'undefined') {
   setInterval(() => {
     if (dirty) {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryDb));
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ books: memoryDb.books, dailyLogs: memoryDb.dailyLogs })
+        );
+        localStorage.setItem(
+          SESSIONS_STORAGE_KEY,
+          JSON.stringify(memoryDb.readingSessions || [])
+        );
         dirty = false;
       } catch (e) {
         console.warn('Failed to save activity db:', e);
@@ -71,11 +84,113 @@ if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
     if (dirty) {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryDb));
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ books: memoryDb.books, dailyLogs: memoryDb.dailyLogs })
+        );
+        localStorage.setItem(
+          SESSIONS_STORAGE_KEY,
+          JSON.stringify(memoryDb.readingSessions || [])
+        );
         dirty = false;
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Failed to save activity db on exit:', e);
+      }
     }
   });
+}
+
+/**
+ * Record exact reading session (duration, book, chapter, timestamp)
+ */
+export function recordReadingSession(
+  sessionData: Omit<ReadingSessionRecord, 'id' | 'date'> & { date?: string }
+): ReadingSessionRecord {
+  const today = sessionData.date || getTodayKey();
+  const session: ReadingSessionRecord = {
+    id: `rs_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    date: today,
+    ...sessionData,
+  };
+
+  if (!memoryDb.readingSessions) {
+    memoryDb.readingSessions = [];
+  }
+
+  // Check if we can merge with a very recent session for the same book and chapter (< 60s ago)
+  const lastSession = memoryDb.readingSessions[0];
+  if (
+    lastSession &&
+    lastSession.bookId === session.bookId &&
+    lastSession.chapterIndex === session.chapterIndex &&
+    session.startTimestamp - lastSession.endTimestamp < 60000
+  ) {
+    lastSession.durationSeconds += session.durationSeconds;
+    lastSession.endTimestamp = session.endTimestamp;
+    if (session.scrollPercentage !== undefined) {
+      lastSession.scrollPercentage = session.scrollPercentage;
+    }
+  } else {
+    // Insert at front
+    memoryDb.readingSessions.unshift(session);
+    // Keep max 200 sessions
+    if (memoryDb.readingSessions.length > 200) {
+      memoryDb.readingSessions = memoryDb.readingSessions.slice(0, 200);
+    }
+  }
+
+  dirty = true;
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('libriaudio_reading_activity_updated', {
+        detail: { bookId: session.bookId, session },
+      })
+    );
+  }
+
+  return session;
+}
+
+/**
+ * Get all reading history sessions
+ */
+export function getReadingSessions(): ReadingSessionRecord[] {
+  return [...(memoryDb.readingSessions || [])];
+}
+
+/**
+ * Clear all reading sessions history
+ */
+export function clearReadingHistory(): void {
+  memoryDb.readingSessions = [];
+  dirty = true;
+  try {
+    localStorage.removeItem(SESSIONS_STORAGE_KEY);
+  } catch (e) {
+    console.warn('Failed to clear sessions storage', e);
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('libriaudio_reading_updated'));
+  }
+}
+
+/**
+ * Delete a specific reading session by ID
+ */
+export function deleteReadingSession(sessionId: string): void {
+  memoryDb.readingSessions = (memoryDb.readingSessions || []).filter((s) => s.id !== sessionId);
+  dirty = true;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('libriaudio_reading_updated'));
+  }
+}
+
+/**
+ * Get reading history sessions for a specific book
+ */
+export function getReadingSessionsForBook(bookId: string): ReadingSessionRecord[] {
+  return (memoryDb.readingSessions || []).filter((s) => s.bookId === bookId);
 }
 
 /**
@@ -85,7 +200,8 @@ export function recordTrueListeningTime(
   book: Audiobook,
   seconds: number,
   trackIndex?: number,
-  currentTime?: number
+  trackTitle?: string,
+  audioCurrentTime?: number
 ): void {
   if (!book || seconds <= 0) return;
   const now = Date.now();
@@ -110,10 +226,9 @@ export function recordTrueListeningTime(
   record.lastInteractedAt = now;
   record.lastListenTimestamp = now;
   if (trackIndex !== undefined) record.currentTrackIndex = trackIndex;
-  if (currentTime !== undefined) record.currentAudioTime = currentTime;
-  if (book.tracks && trackIndex !== undefined && book.tracks[trackIndex]) {
-    record.currentTrackTitle = book.tracks[trackIndex].title;
-  }
+  if (trackTitle) record.currentTrackTitle = trackTitle;
+  if (audioCurrentTime !== undefined) record.currentAudioTime = audioCurrentTime;
+  if (book.coverImageUrl) record.coverImageUrl = book.coverImageUrl;
 
   // Daily log
   if (!memoryDb.dailyLogs[today]) {
@@ -130,7 +245,9 @@ export function recordTrueListeningTime(
 export function recordTrueReadingTime(
   book: Audiobook,
   seconds: number,
-  chapterIndex?: number
+  chapterIndex?: number,
+  chapterTitle?: string,
+  scrollPercentage?: number
 ): void {
   if (!book || seconds <= 0) return;
   const now = Date.now();
@@ -155,6 +272,9 @@ export function recordTrueReadingTime(
   record.lastInteractedAt = now;
   record.lastReadTimestamp = now;
   if (chapterIndex !== undefined) record.lastReadChapterIndex = chapterIndex;
+  if (chapterTitle) record.lastReadChapterTitle = chapterTitle;
+  if (scrollPercentage !== undefined) record.lastScrollPercentage = scrollPercentage;
+  if (book.coverImageUrl) record.coverImageUrl = book.coverImageUrl;
 
   // Daily log
   if (!memoryDb.dailyLogs[today]) {
@@ -163,6 +283,14 @@ export function recordTrueReadingTime(
   memoryDb.dailyLogs[today].readSeconds += seconds;
 
   dirty = true;
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('libriaudio_reading_activity_updated', {
+        detail: { bookId: book.id, readSeconds: seconds },
+      })
+    );
+  }
 }
 
 /**
@@ -199,7 +327,7 @@ export function getOverallActivitySummary(): {
   const logs = Object.values(memoryDb.dailyLogs).sort((a, b) => b.date.localeCompare(a.date));
   let streak = 0;
   const today = new Date();
-  
+
   for (let i = 0; i < 365; i++) {
     const d = new Date();
     d.setDate(today.getDate() - i);
@@ -221,32 +349,65 @@ export function getOverallActivitySummary(): {
     totalCombinedSeconds,
     booksStartedCount: books.length,
     dailyStreak: streak,
-    dailyLogs: logs.slice(0, 14),
+    dailyLogs: logs,
   };
 }
 
 /**
- * Format exact true duration (e.g. "1 hr 24 mins 32 secs" or "8 mins 12 secs" or "45 secs")
+ * Get daily activity for a specific date (YYYY-MM-DD)
  */
-export function formatTrueDuration(seconds: number): string {
-  if (!seconds || seconds <= 0) return '0 seconds';
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-
-  const parts: string[] = [];
-  if (hrs > 0) parts.push(`${hrs} hr${hrs > 1 ? 's' : ''}`);
-  if (mins > 0) parts.push(`${mins} min${mins > 1 ? 's' : ''}`);
-  if (secs > 0 || parts.length === 0) parts.push(`${secs} sec${secs !== 1 ? 's' : ''}`);
-
-  return parts.join(' ');
+export function getDailyActivity(dateStr: string): DailyActivityLog {
+  return memoryDb.dailyLogs[dateStr] || { date: dateStr, listenedSeconds: 0, readSeconds: 0 };
 }
 
 /**
- * Format concise true duration (e.g. "1h 24m", "18m", "45s")
+ * Get last 7 days of activity logs
  */
-export function formatTrueDurationShort(seconds: number): string {
-  if (!seconds || seconds <= 0) return '0s';
+export function getLast7DaysActivity(): {
+  date: string;
+  dayName: string;
+  listenedMins: number;
+  readMins: number;
+  totalMins: number;
+}[] {
+  const days: {
+    date: string;
+    dayName: string;
+    listenedMins: number;
+    readMins: number;
+    totalMins: number;
+  }[] = [];
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const today = new Date();
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(today.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+    const dayName = dayNames[d.getDay()];
+
+    const log = getDailyActivity(dateStr);
+    const listenedMins = Math.round(log.listenedSeconds / 60);
+    const readMins = Math.round(log.readSeconds / 60);
+
+    days.push({
+      date: dateStr,
+      dayName,
+      listenedMins,
+      readMins,
+      totalMins: listenedMins + readMins,
+    });
+  }
+
+  return days;
+}
+
+/**
+ * Format duration in human friendly string (e.g. "2h 45m" or "32m")
+ */
+export function formatTrueDuration(seconds: number): string {
+  if (!seconds || seconds <= 0) return '0m';
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
@@ -257,12 +418,29 @@ export function formatTrueDurationShort(seconds: number): string {
 }
 
 /**
- * Clear or reset all true activity tracking
+ * Format duration in short human friendly string (e.g. "2h", "45m", "30s")
+ */
+export function formatTrueDurationShort(seconds: number): string {
+  if (!seconds || seconds <= 0) return '0m';
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+
+  if (hrs > 0) return `${hrs}h`;
+  if (mins > 0) return `${mins}m`;
+  return `${Math.floor(seconds)}s`;
+}
+
+/**
+ * Clear or reset all true activity tracking & reading history
  */
 export function clearAllActivityLogs(): void {
-  memoryDb = { books: {}, dailyLogs: {} };
+  memoryDb = { books: {}, dailyLogs: {}, readingSessions: [] };
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(SESSIONS_STORAGE_KEY);
   dirty = false;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('libriaudio_reading_activity_updated', { detail: {} }));
+  }
 }
 
 export interface AuthorRanking {
@@ -289,11 +467,9 @@ export interface AuthorRanking {
 export function normalizeAuthorName(raw: string): string {
   if (!raw) return 'Unknown Author';
   let clean = raw.trim();
-  // Remove birth/death years if present like (1828 - 1910)
   clean = clean.replace(/\(\s*\d{3,4}\s*-\s*\d{3,4}\s*\)/g, '').trim();
   clean = clean.replace(/\(\s*\d{3,4}\s*-\s*\)/g, '').trim();
 
-  // If formatted as "Lastname, Firstname"
   if (clean.includes(',') && !clean.toLowerCase().includes('various') && !clean.toLowerCase().includes('librivox')) {
     const parts = clean.split(',').map((p) => p.trim());
     if (parts.length === 2) {
@@ -353,7 +529,7 @@ export function getAuthorRankings(historyFallback?: Audiobook[]): AuthorRanking[
     }
   });
 
-  // 2. If fallback history audiobooks are provided and not in activity db yet, record baseline engagement
+  // 2. Fallback history books
   if (historyFallback && historyFallback.length > 0) {
     historyFallback.forEach((hBook, idx) => {
       const normAuthor = normalizeAuthorName(hBook.author);
@@ -368,7 +544,6 @@ export function getAuthorRankings(historyFallback?: Audiobook[]): AuthorRanking[
 
       const item = authorMap[normAuthor];
       if (!item.booksMap.has(hBook.id)) {
-        // Provide an initial seed duration for history items if user hasn't accumulated raw tick seconds yet
         const seedSecs = Math.max(300, Math.floor((hBook.totalTimeSecs || 1800) * 0.15) / (idx + 1));
         item.listenedSeconds += seedSecs;
         item.booksMap.set(hBook.id, {
@@ -406,13 +581,8 @@ export function getAuthorRankings(historyFallback?: Audiobook[]): AuthorRanking[
     };
   });
 
-  // Filter out zero seconds authors
   const filtered = authorsList.filter((a) => a.totalSeconds > 0);
-
-  // Sort descending by total duration
   filtered.sort((a, b) => b.totalSeconds - a.totalSeconds);
-
-  // Calculate total duration across all authors for percentage calculation
   const totalAllAuthorsSeconds = filtered.reduce((acc, a) => acc + a.totalSeconds, 0);
 
   return filtered.map((a, idx) => ({

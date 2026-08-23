@@ -3,6 +3,7 @@ import { Audiobook, AudioTrack } from '../types';
 import { Search, X, Play, Clock, Sparkles, BookOpen, SearchX, Download, Check } from 'lucide-react';
 import { resolveFullTracklist } from '../utils/librivoxRecommendations';
 import { downloadAudiobook, isBookDownloaded } from '../utils/offlineStorage';
+import { getSavedQualityPreference } from '../utils/audioQualityManager';
 
 interface SearchViewProps {
   allBooks: Audiobook[];
@@ -97,6 +98,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   typeof doc.description === 'string'
                     ? doc.description.replace(/<[^>]*>/g, '').trim()
                     : '';
+                const userPref = getSavedQualityPreference();
+                const defaultUrl = `https://archive.org/download/${id}/${id}_${userPref === '128k' ? '128kb' : '64kb'}.mp3`;
                 combined.push({
                   id,
                   title: doc.title || 'Untitled Work',
@@ -110,13 +113,20 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   language: 'English',
                   totalTimeSecs: typeof doc.runtime === 'string' ? parseRuntimeToSecs(doc.runtime) : 7200,
                   reader: 'LibriVox Community',
+                  availableQualities: ['128k', '64k'],
+                  selectedQuality: userPref,
                   tracks: [
                     {
                       id: `ia_${id}_01`,
                       title: `${doc.title || 'Section 1'}`,
-                      audioUrl: `https://archive.org/download/${id}/${id}_64kb.mp3`,
+                      audioUrl: defaultUrl,
                       durationSeconds: 1800,
                       trackNumber: 1,
+                      quality: userPref,
+                      variants: {
+                        '64k': `https://archive.org/download/${id}/${id}_64kb.mp3`,
+                        '128k': `https://archive.org/download/${id}/${id}_128kb.mp3`,
+                      },
                     },
                   ],
                 });

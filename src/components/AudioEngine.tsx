@@ -76,8 +76,12 @@ export const AudioEngine: React.FC<AudioEngineProps> = ({
       if (!isSubscribed) return;
 
       if (audio!.src !== finalUrl) {
+        const prevTime = audio!.currentTime;
         audio!.src = finalUrl;
         audio!.load();
+        if (prevTime > 0) {
+          audio!.currentTime = prevTime;
+        }
         if (playerState.isPlaying) {
           initAudioGraph();
           audio!.play().catch(() => {
@@ -95,7 +99,11 @@ export const AudioEngine: React.FC<AudioEngineProps> = ({
         URL.revokeObjectURL(createdOfflineUrl);
       }
     };
-  }, [playerState.currentTrack?.id, playerState.currentBook?.id]);
+  }, [
+    playerState.currentTrack?.id,
+    playerState.currentBook?.id,
+    playerState.currentTrack?.audioUrl,
+  ]);
 
   // Sync play / pause state
   useEffect(() => {

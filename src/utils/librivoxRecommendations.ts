@@ -1,5 +1,10 @@
 import { Audiobook, AudioTrack } from '../types';
 import { INITIAL_AUDIOBOOKS } from '../data/mockCatalog';
+import {
+  segmentAndDeduplicateArchiveFiles,
+  getSavedQualityPreference,
+  applyQualityToAudiobook,
+} from './audioQualityManager';
 
 export interface RecommendationSection {
   id: string;
@@ -109,6 +114,8 @@ export function mapArchiveDocToAudiobook(doc: any): Audiobook {
     : doc.creator || 'Classic Author';
 
   const totalSecs = typeof doc.runtime === 'string' ? parseRuntimeToSeconds(doc.runtime) : 10800;
+  const userPref = getSavedQualityPreference();
+  const defaultUrl = `https://archive.org/download/${id}/${id}_${userPref === '128k' ? '128kb' : '64kb'}.mp3`;
 
   return {
     id,
@@ -119,13 +126,20 @@ export function mapArchiveDocToAudiobook(doc: any): Audiobook {
     language: 'English',
     totalTimeSecs: totalSecs,
     reader: 'LibriVox Volunteer Community',
+    availableQualities: ['128k', '64k'],
+    selectedQuality: userPref,
     tracks: [
       {
         id: `ia_${id}_01`,
         title: `${doc.title || 'Chapter 1'}`,
-        audioUrl: `https://archive.org/download/${id}/${id}_64kb.mp3`,
+        audioUrl: defaultUrl,
         durationSeconds: Math.min(totalSecs, 1800),
         trackNumber: 1,
+        quality: userPref,
+        variants: {
+          '64k': `https://archive.org/download/${id}/${id}_64kb.mp3`,
+          '128k': `https://archive.org/download/${id}/${id}_128kb.mp3`,
+        },
       },
     ],
   };
@@ -188,7 +202,7 @@ export async function fetchDynamicPersonalizedRecommendations(
         title: `Because you enjoyed ${seedBook.author}`,
         subtitle: `More timeless recordings related to ${seedAuthor}`,
         badge: 'Personalized',
-        books: filtered,
+        books: Array.from(new Map(filtered.map(b => [b.title, b])).values()),
       });
     }
   } catch (e) {
@@ -205,7 +219,7 @@ export async function fetchDynamicPersonalizedRecommendations(
         title: 'Most Listened on LibriVox',
         subtitle: 'Community masterpieces with the highest listener acclaim',
         badge: 'Trending',
-        books: trending,
+        books: Array.from(new Map(trending.map(b => [b.title, b])).values()),
       });
     }
   } catch (e) {
@@ -214,7 +228,8 @@ export async function fetchDynamicPersonalizedRecommendations(
 
   // 3. "Short Listens" (< 3 Hours)
   try {
-    const shortQuery = 'runtime:[00:10:00 TO 03:00:00] AND (poe OR chekhov OR "short stories" OR wilde OR kafka)';
+    // Exclude books commonly found in Epic collections
+    const shortQuery = 'runtime:[00:10:00 TO 03:00:00] AND (poe OR chekhov OR "short stories" OR wilde OR kafka) AND NOT (doyle OR tolstoy OR dumas OR hugo OR dickens OR austen)';
     const shortListens = await fetchLibriVoxCategory(shortQuery, 6);
     if (shortListens.length > 0) {
       sections.push({
@@ -222,7 +237,7 @@ export async function fetchDynamicPersonalizedRecommendations(
         title: 'Bite-Sized Classics',
         subtitle: 'Unabridged short stories & novellas under 3 hours',
         badge: 'Under 3h',
-        books: shortListens,
+        books: Array.from(new Map(shortListens.map(b => [b.title, b])).values()),
       });
     }
   } catch (e) {
@@ -231,7 +246,8 @@ export async function fetchDynamicPersonalizedRecommendations(
 
   // 4. "Epic Masterpieces" (> 10 Hours)
   try {
-    const epicQuery = 'runtime:[10:00:00 TO 99:00:00] AND (doyle OR tolstoy OR dumas OR hugo OR dickens OR austen)';
+    // Exclude books commonly found in Short collections
+    const epicQuery = 'runtime:[10:00:00 TO 99:00:00] AND (doyle OR tolstoy OR dumas OR hugo OR dickens OR austen) AND NOT (poe OR chekhov OR wilde OR kafka)';
     const epics = await fetchLibriVoxCategory(epicQuery, 6);
     if (epics.length > 0) {
       sections.push({
@@ -239,7 +255,7 @@ export async function fetchDynamicPersonalizedRecommendations(
         title: 'Epic Literary Journeys',
         subtitle: 'Immersive monumental novels with full cast or solo narration',
         badge: 'Epic Length',
-        books: epics,
+        books: Array.from(new Map(epics.map(b => [b.title, b])).values()),
       });
     }
   } catch (e) {
@@ -271,45 +287,41 @@ export async function fetchDynamicPersonalizedRecommendations(
 
 // Fetch full chapter tracklist for an Internet Archive item on demand
 export async function resolveFullTracklist(book: Audiobook): Promise<Audiobook> {
-  // If book already has multiple tracks, return it
-  if (book.tracks.length > 1) {
-    return book;
+  // If book already has segmented tracks with qualities, apply current user quality preference and return
+  if (book.tracks.length > 1 && book.qualitySegments) {
+    return applyQualityToAudiobook(book);
   }
 
   try {
     const res = await fetch(`https://archive.org/metadata/${book.id}`);
-    if (!res.ok) return book;
+    if (!res.ok) return applyQualityToAudiobook(book);
 
     const data = await res.json();
     const files: any[] = data.files || [];
 
-    // Filter mp3 files
-    const mp3Files = files
-      .filter((f) => f.name && f.name.toLowerCase().endsWith('.mp3') && !f.name.includes('_vbr.mp3'))
-      .sort((a, b) => (parseInt(a.track || '0', 10) || 0) - (parseInt(b.track || '0', 10) || 0));
+    if (files.length > 0) {
+      const { availableQualities, qualitySegments, deduplicatedTracks } =
+        segmentAndDeduplicateArchiveFiles(files, book.id, book.title);
 
-    if (mp3Files.length > 0) {
-      const tracks: AudioTrack[] = mp3Files.map((file, idx) => {
-        const title = file.title || file.name.replace('.mp3', '').replace(/_/g, ' ');
-        const durationSeconds = parseFloat(file.length || '0') || 1200;
+      if (deduplicatedTracks.length > 0) {
+        const totalDuration = deduplicatedTracks.reduce(
+          (acc, t) => acc + (t.durationSeconds || 0),
+          0
+        );
+
         return {
-          id: `${book.id}_track_${idx + 1}`,
-          title: title,
-          audioUrl: `https://archive.org/download/${book.id}/${file.name}`,
-          durationSeconds: Math.round(durationSeconds),
-          trackNumber: idx + 1,
+          ...book,
+          availableQualities,
+          qualitySegments,
+          selectedQuality: getSavedQualityPreference(),
+          tracks: deduplicatedTracks,
+          totalTimeSecs: totalDuration > 0 ? totalDuration : book.totalTimeSecs,
         };
-      });
-
-      return {
-        ...book,
-        tracks,
-        totalTimeSecs: tracks.reduce((acc, t) => acc + t.durationSeconds, 0) || book.totalTimeSecs,
-      };
+      }
     }
   } catch (err) {
     console.warn(`[Tracklist resolver] Failed for ${book.id}:`, err);
   }
 
-  return book;
+  return applyQualityToAudiobook(book);
 }

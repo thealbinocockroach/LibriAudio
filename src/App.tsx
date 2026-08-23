@@ -12,6 +12,7 @@ import { GutenbergReaderModal } from './components/GutenbergReaderModal';
 import { AudioEngine } from './components/AudioEngine';
 import { SleepTimerModal } from './components/SleepTimerModal';
 import { VoiceEnhancerModal } from './components/VoiceEnhancerModal';
+import { Skeleton } from './components/Skeleton';
 import { BookmarksModal } from './components/BookmarksModal';
 import { CarModeModal } from './components/CarModeModal';
 import { OfflineManagerModal } from './components/OfflineManagerModal';
@@ -21,10 +22,10 @@ import { resolveFullTracklist } from './utils/librivoxRecommendations';
 import { parseUploadedEpub } from './utils/epubParser';
 import { initTheme } from './utils/themeManager';
 import {
-  isCurrentlyFullscreen,
-  toggleFullscreenMode,
-  requestFullscreenMode,
-} from './utils/fullscreenHelper';
+  applyQualityToAudiobook,
+  getSavedQualityPreference,
+} from './utils/audioQualityManager';
+
 import {
   Compass,
   Search,
@@ -34,8 +35,6 @@ import {
   HardDrive,
   Settings,
   BarChart3,
-  Maximize2,
-  Minimize2,
 } from 'lucide-react';
 import { AppLogo } from './components/AppLogo';
 
@@ -46,7 +45,6 @@ export default function App() {
   const [readingBook, setReadingBook] = useState<Audiobook | null>(INITIAL_AUDIOBOOKS[0]);
   const [catalog, setCatalog] = useState<Audiobook[]>(INITIAL_AUDIOBOOKS);
   const [isLoadingFeed, setIsLoadingFeed] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Modals for playback & storage features
   const [showSleepTimerModal, setShowSleepTimerModal] = useState(false);
@@ -104,41 +102,42 @@ export default function App() {
       isEndOfChapter: false,
       fadeDurationSecs: 20,
     },
-    voiceEnhancer: 'off',
+    voiceEnhancer: (localStorage.getItem('libriaudio_eq_preset') as VoiceEnhancerPreset) || 'off',
     isOfflineOnly: false,
   });
 
-  // Initialize Theme and Auto Fullscreen on First User Interaction by Default
+  // Initialize Theme on First User Interaction
   useEffect(() => {
     initTheme();
+  }, []);
 
-    const autoFS = localStorage.getItem('libriaudio_auto_fullscreen');
-    const shouldAutoFS = autoFS === null || autoFS === 'true';
+  // Sync Audio Quality Preference Changes dynamically
+  useEffect(() => {
+    const handleQualityChanged = (e: any) => {
+      const quality = e?.detail?.quality || getSavedQualityPreference();
+      setPlayerState((prev) => {
+        if (!prev.currentBook) return prev;
+        const updatedBook = applyQualityToAudiobook(prev.currentBook, quality);
+        const updatedTrack =
+          updatedBook.tracks[prev.currentTrackIndex] || prev.currentTrack;
 
-    const triggerAutoFullscreen = async () => {
-      if (shouldAutoFS && !isCurrentlyFullscreen()) {
-        await requestFullscreenMode();
-        setIsFullscreen(isCurrentlyFullscreen());
-      }
+        return {
+          ...prev,
+          currentBook: updatedBook,
+          currentTrack: updatedTrack,
+        };
+      });
     };
 
-    window.addEventListener('pointerdown', triggerAutoFullscreen, { once: true });
-    window.addEventListener('keydown', triggerAutoFullscreen, { once: true });
-
-    const handleFSChange = () => {
-      setIsFullscreen(isCurrentlyFullscreen());
-    };
-
-    document.addEventListener('fullscreenchange', handleFSChange);
-    document.addEventListener('webkitfullscreenchange', handleFSChange);
-
+    window.addEventListener('libriaudio_quality_changed', handleQualityChanged);
     return () => {
-      window.removeEventListener('pointerdown', triggerAutoFullscreen);
-      window.removeEventListener('keydown', triggerAutoFullscreen);
-      document.removeEventListener('fullscreenchange', handleFSChange);
-      document.removeEventListener('webkitfullscreenchange', handleFSChange);
+      window.removeEventListener(
+        'libriaudio_quality_changed',
+        handleQualityChanged
+      );
     };
   }, []);
+
 
   // Save state
   useEffect(() => {
@@ -205,42 +204,44 @@ export default function App() {
   }, [playerState.sleepTimer.isActive, playerState.sleepTimer.isEndOfChapter]);
 
   const handleSelectBook = (book: Audiobook, trackIndex = 0) => {
-    const selectedTrack = book.tracks[trackIndex] || {
-      id: `default_${book.id}`,
-      title: `${book.title} - Complete`,
-      audioUrl: book.tracks[0]?.audioUrl || '',
-      durationSeconds: book.totalTimeSecs || 1800,
+    const configuredBook = applyQualityToAudiobook(book);
+    const selectedTrack = configuredBook.tracks[trackIndex] || {
+      id: `default_${configuredBook.id}`,
+      title: `${configuredBook.title} - Complete`,
+      audioUrl: configuredBook.tracks[0]?.audioUrl || '',
+      durationSeconds: configuredBook.totalTimeSecs || 1800,
       trackNumber: 1,
     };
 
     setPlayerState((prev) => {
-      const alreadyInHistory = prev.history.some((b) => b.id === book.id);
+      const alreadyInHistory = prev.history.some((b) => b.id === configuredBook.id);
       const newHistory = alreadyInHistory
-        ? [book, ...prev.history.filter((b) => b.id !== book.id)]
-        : [book, ...prev.history];
+        ? [configuredBook, ...prev.history.filter((b) => b.id !== configuredBook.id)]
+        : [configuredBook, ...prev.history];
 
       return {
         ...prev,
-        currentBook: book,
+        currentBook: configuredBook,
         currentTrack: selectedTrack,
         currentTrackIndex: trackIndex,
         isPlaying: true,
         currentTime: 0,
-        duration: selectedTrack.durationSeconds || book.totalTimeSecs || 1800,
+        duration: selectedTrack.durationSeconds || configuredBook.totalTimeSecs || 1800,
         history: newHistory,
       };
     });
 
-    if (book.tracks.length <= 1) {
-      resolveFullTracklist(book).then((fullBook) => {
+    if (configuredBook.tracks.length <= 1) {
+      resolveFullTracklist(configuredBook).then((fullBook) => {
         if (fullBook.tracks.length > 1) {
           setPlayerState((prev) => {
-            if (prev.currentBook?.id === book.id) {
+            if (prev.currentBook?.id === configuredBook.id) {
+              const activeTrack = fullBook.tracks[trackIndex] || fullBook.tracks[0];
               return {
                 ...prev,
                 currentBook: fullBook,
-                currentTrack: fullBook.tracks[trackIndex] || fullBook.tracks[0],
-                duration: fullBook.tracks[trackIndex]?.durationSeconds || prev.duration,
+                currentTrack: activeTrack,
+                duration: activeTrack?.durationSeconds || prev.duration,
               };
             }
             return prev;
@@ -410,6 +411,7 @@ export default function App() {
 
   // Voice Enhancer handler
   const handleSelectVoiceEnhancer = (preset: VoiceEnhancerPreset) => {
+    localStorage.setItem('libriaudio_eq_preset', preset);
     setPlayerState((prev) => ({ ...prev, voiceEnhancer: preset }));
   };
 
@@ -462,11 +464,16 @@ export default function App() {
       <AudioEngine
         playerState={playerState}
         onTimeUpdate={(currentTime, duration) => {
-          setPlayerState((prev) => ({
-            ...prev,
-            currentTime,
-            duration: duration > 0 ? duration : prev.duration,
-          }));
+          setPlayerState((prev) => {
+            if (prev.currentBook) {
+              localStorage.setItem(`libriaudio_pos_${prev.currentBook.id}_${prev.currentTrackIndex}`, currentTime.toString());
+            }
+            return {
+              ...prev,
+              currentTime,
+              duration: duration > 0 ? duration : prev.duration,
+            };
+          });
         }}
         onEnded={handleSkipNext}
         onBuffering={(isBuffering) => {
@@ -499,25 +506,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* Right Action Tools: Fullscreen */}
+        {/* Right Action Tools */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Fullscreen Toggle */}
-          <button
-            id="btn-header-fullscreen"
-            onClick={async () => {
-              await toggleFullscreenMode();
-              setIsFullscreen(isCurrentlyFullscreen());
-            }}
-            className={`p-2 rounded-xl border text-xs font-medium flex items-center transition-all ${
-              isFullscreen
-                ? 'bg-[#C5A059]/20 border-[#C5A059] text-[#C5A059]'
-                : 'bg-white/[0.03] border-white/10 text-white/70 hover:text-white hover:bg-white/[0.08]'
-            }`}
-            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
-            aria-label="Toggle Fullscreen"
-          >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </button>
         </div>
       </header>
 
@@ -525,10 +515,7 @@ export default function App() {
       <main className="flex-1 relative overflow-hidden bg-[#070707] flex flex-col">
         <div className="flex-1 overflow-y-auto">
           {isLoadingFeed ? (
-            <div className="h-full w-full flex flex-col items-center justify-center space-y-3 py-20">
-              <div className="w-8 h-8 rounded-full border-2 border-[#C5A059] border-t-transparent animate-spin" />
-              <p className="text-xs font-serif-display italic text-[#C5A059]">Restoring archive catalog...</p>
-            </div>
+            <Skeleton />
           ) : (
             <>
               {activeTab === 'explore' && (

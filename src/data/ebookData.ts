@@ -239,25 +239,239 @@ Near the door stood a bowl filled with fresh milk, in which floated small pieces
       },
     ],
   },
+  // 17: Dracula
+  '17': {
+    gutenbergId: 345,
+    chapters: [
+      {
+        id: 'drac_ch_01',
+        title: 'Chapter 1: Jonathan Harker’s Journal',
+        trackId: 'drac_01',
+        content: `3 May. Bistritz.—Left Munich at 8:35 P. M., on 1st May, arriving at Vienna early next morning; should have arrived at 6:46, but train was an hour late. Buda-Pesth seems a wonderful place, from the glimpse which I got of it from the train and the little I could walk through the streets. I feared to go very far from the station, as we had arrived late and would start as near the correct time as possible.
+
+The impression I had was that we were leaving the West and entering the East; the most western of splendid bridges over the Danube, which was here of noble width and depth, took us among the traditions of Turkish rule.
+
+We left in pretty good time, and came after nightfall to Klausenburgh. Here I stopped for the night at the Hotel Royale. I had for dinner, or rather supper, a chicken done up some way with red pepper, which was very good but thirsty. (Mem., get recipe for Mina.) I asked the waiter, and he said it was called “paprika hendl,” and that, as it was a national dish, I should be able to get it anywhere along the Carpathians.
+
+I found my smattering of German very useful here; indeed, I don’t know how I should be able to get on without it.
+
+Having had some time at my disposal when in London, I had visited the British Museum, and made search among the books and maps in the library regarding Transylvania; it had struck me that some foreknowledge of the country could hardly fail to have some importance in dealing with a nobleman of that country.`,
+      },
+      {
+        id: 'drac_ch_02',
+        title: 'Chapter 2: Castle Dracula',
+        trackId: 'drac_02',
+        content: `5 May.—I must have been asleep, for certainly if I had been fully awake I must have noticed the approach of such a remarkable place. In the gloom the courtyard looked of considerable size, and as several dark ways led from it under great round arches, it perhaps seemed bigger than it really is. I have not yet been able to see it by daylight.
+
+When the calèche stopped, the driver jumped down and held out his hand to assist me to alight. Again I could not but notice his prodigious strength. His hand actually seemed like a steel vice that could have crushed mine if he had chosen. Then he took out my traps, and placed them on the ground beside me as I stood close to a great door, old and studded with large iron nails, and set in a heavy doorway of massive stone.
+
+I could see in the dim light that the stone was massively carved, but that the carving had been much worn by time and weather. As I stood, the driver jumped again into his seat, and shook the reins; the horses started forward, and with their bells jingling they passed into the darkness of one of the dark ways.`,
+      },
+    ],
+  },
+
+  // 150 & 17: Dracula
+  '150': {
+    gutenbergId: 345,
+    chapters: [
+      {
+        id: 'drac_ch_01',
+        title: 'Chapter 1: Jonathan Harker’s Journal',
+        trackId: 'dracula_01',
+        content: `3 May. Bistritz.—Left Munich at 8:35 P. M., on 1st May, arriving at Vienna early next morning; should have arrived at 6:46, but train was an hour late. Buda-Pesth seems a wonderful place, from the glimpse which I got of it from the train and the little I could walk through the streets. I feared to go very far from the station, as we had arrived late and would start as near the correct time as possible.
+
+The impression I had was that we were leaving the West and entering the East; the most western of splendid bridges over the Danube, which was here of noble width and depth, took us among the traditions of Turkish rule.
+
+We left in pretty good time, and came after nightfall to Klausenburgh. Here I stopped for the night at the Hotel Royale. I had for dinner, or rather supper, a chicken done up some way with red pepper, which was very good but thirsty. (Mem., get recipe for Mina.) I asked the waiter, and he said it was called “paprika hendl,” and that, as it was a national dish, I should be able to get it anywhere along the Carpathians.
+
+I found my smattering of German very useful here; indeed, I don’t know how I should be able to get on without it.
+
+Having had some time at my disposal when in London, I had visited the British Museum, and made search among the books and maps in the library regarding Transylvania; it had struck me that some foreknowledge of the country could hardly fail to have some importance in dealing with a nobleman of that country.`,
+      },
+      {
+        id: 'drac_ch_02',
+        title: 'Chapter 2: Castle Dracula',
+        trackId: 'dracula_01',
+        content: `5 May.—I must have been asleep, for certainly if I had been fully awake I must have noticed the approach of such a remarkable place. In the gloom the courtyard looked of considerable size, and as several dark ways led from it under great round arches, it perhaps seemed bigger than it really is. I have not yet been able to see it by daylight.
+
+When the calèche stopped, the driver jumped down and held out his hand to assist me to alight. Again I could not but notice his prodigious strength. His hand actually seemed like a steel vice that could have crushed mine if he had chosen. Then he took out my traps, and placed them on the ground beside me as I stood close to a great door, old and studded with large iron nails, and set in a heavy doorway of massive stone.
+
+I could see in the dim light that the stone was massively carved, but that the carving had been much worn by time and weather. As I stood, the driver jumped again into his seat, and shook the reins; the horses started forward, and with their bells jingling they passed into the darkness of one of the dark ways.`,
+      },
+    ],
+  },
+
+  // 42: Dr Jekyll and Mr Hyde
+  '42': {
+    gutenbergId: 43,
+    chapters: [
+      {
+        id: 'jekyll_ch_01',
+        title: 'Story of the Door',
+        trackId: 'jekyll_01',
+        content: `Mr. Utterson the lawyer was a man of a rugged countenance that was never lighted by a smile; cold, scanty and embarrassed in discourse; backward in sentiment; lean, long, dusty, dreary and yet somehow lovable. At friendly meetings, and when the wine was to his taste, something eminently human beaconed from his eye; something indeed which never found its way into his talk, but which spoke not only in these silent symbols of the after-dinner face, but more often and loudly in the acts of his life.
+
+He was austere with himself; drank gin when he was alone, to mortify a taste for vintages; and though he enjoyed the theatre, had not crossed the doors of one for twenty years. But he had an approved tolerance for others; wondering almost with envy at the high pressure of spirits involved in their misdeeds; and in any extremity inclined to help rather than to reprove.
+
+“I incline to Cain’s heresy,” he used to say quaintly: “I let my brother go to the devil in his own way.” In this character, it was frequently his fortune to be the last reputable acquaintance and the last good influence in the lives of downgoing men. And to such as these, so long as they came about his chambers, he never marked a shade of change in his demeanour.`,
+      },
+      {
+        id: 'jekyll_ch_02',
+        title: 'Search for Mr. Hyde',
+        trackId: 'jekyll_01',
+        content: `That evening Mr. Utterson came home to his bachelor house in sombre spirits and sat down to dinner without relish. It was his custom of a Sunday, when this meal was over, to sit close by the fire, a volume of some dry divinity on his reading desk, until the clock of the neighbouring church rang out the hour of twelve, when he would go soberly and gratefully to bed.
+
+On this night, however, as soon as the cloth was taken away, he took up a candle and went into his business room. There he opened his safe, took from the most private part of it a document endorsed on the envelope as Dr. Jekyll’s Will, and sat down with a clouded brow to study its contents. The will was holograph, for Mr. Utterson, though he took charge of it now that it was made, had refused to lend the least assistance in the making of it; it provided not only that, in case of the decease of Henry Jekyll, M.D., D.C.L., LL.D., F.R.S., etc., all his worldly possessions should pass into the hands of his “friend and benefactor Edward Hyde,” but that in case of Dr. Jekyll’s “disappearance or unexplained absence for any period exceeding three calendar months,” the said Edward Hyde should step into the said Henry Jekyll’s shoes without further delay and free from any burden or obligation, beyond the payment of a few small sums to the members of the doctor’s household.`,
+      },
+    ],
+  },
+
+  // 108: The Tell-Tale Heart
+  '108': {
+    gutenbergId: 2148,
+    chapters: [
+      {
+        id: 'poe_ch_01',
+        title: 'The Tell-Tale Heart',
+        trackId: 'poe_01',
+        content: `True!—nervous—very, very dreadfully nervous I had been and am; but why will you say that I am mad? The disease had sharpened my senses—not destroyed—not dulled them. Above all was the sense of hearing acute. I heard all things in the heaven and in the earth. I heard many things in hell. How, then, am I mad? Hearken! and observe how healthily—how calmly I can tell you the whole story.
+
+It is impossible to say how first the idea entered my brain; but once conceived, it haunted me day and night. Object there was none. Passion there was none. I loved the old man. He had never wronged me. He had never given me insult. For his gold I had no desire. I think it was his eye! yes, it was this! He had the eye of a vulture—a pale blue eye, with a film over it. Whenever it fell upon me, my blood ran cold; and so by degrees—very gradually—I made up my mind to take the life of the old man, and thus rid myself of the eye forever.
+
+Now this is the point. You fancy me mad. Madmen know nothing. But you should have seen me. You should have seen how wisely I proceeded—with what caution—with what foresight—with what dissimulation I went to work! I was never kinder to the old man than during the whole week before I killed him.`,
+      },
+      {
+        id: 'poe_ch_02',
+        title: 'The Cask of Amontillado',
+        trackId: 'poe_02',
+        content: `The thousand injuries of Fortunato I had borne as I best could, but when he ventured upon insult I vowed revenge. You, who so well know the nature of my soul, will not suppose, however, that gave utterance to a threat. At length I would be avenged; this was a point definitely, settled—but the very definitiveness with which it was resolved precluded the idea of risk. I must not only punish but punish with impunity. A wrong is unredressed when retribution overtakes its redresser. It is equally unredressed when the avenger fails to make himself felt as such to him who has done the wrong.
+
+It must be understood that neither by word nor deed had I given Fortunato cause to doubt my good will. I continued, as was my wont, to smile in his face, and he did not perceive that my smile now was at the thought of his immolation.`,
+      },
+    ],
+  },
+
+  // 201: Leaves of Grass
+  '201': {
+    gutenbergId: 1322,
+    chapters: [
+      {
+        id: 'whitman_ch_01',
+        title: 'Song of Myself (1-10)',
+        trackId: 'leaves_01',
+        content: `I celebrate myself, and sing myself,
+And what I assume you shall assume,
+For every atom belonging to me as good belongs to you.
+
+I loafe and invite my soul,
+I lean and loafe at my ease observing a spear of summer grass.
+
+My tongue, every atom of my blood, form'd from this soil, this air,
+Born here of parents born here from parents the same, and their parents the same,
+I, now thirty-seven years old in perfect health begin,
+Hoping to cease not till death.
+
+Creeds and schools in abeyance,
+Retiring back a while sufficed at what they are, but never forgotten,
+I harbor for good or bad, I permit to speak at every hazard,
+Nature without check with original energy.`,
+      },
+    ],
+  },
+
+  // 11: Alice's Adventures in Wonderland
+  '11': {
+    gutenbergId: 11,
+    chapters: [
+      {
+        id: 'alice_ch_01',
+        title: 'Chapter 1: Down the Rabbit-Hole',
+        trackId: 'alice_01',
+        content: `Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do: once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it, “and what is the use of a book,” thought Alice “without pictures or conversations?”
+
+So she was considering in her own mind (as well as she could, for the hot day made her feel very sleepy and stupid), whether the pleasure of making a daisy-chain would be worth the trouble of getting up and picking the daisies, when suddenly a White Rabbit with pink eyes ran close by her.
+
+There was nothing so very remarkable in that; nor did Alice think it so very much out of the way to hear the Rabbit say to itself, “Oh dear! Oh dear! I shall be late!” (when she thought it over afterwards, it occurred to her that she ought to have wondered at this, but at the time it all seemed quite natural); but when the Rabbit actually took a watch out of its waistcoat-pocket, and looked at it, and then hurried on, Alice started to her feet, for it flashed across her mind that she had never before seen a rabbit with either a waistcoat-pocket, or a watch to take out of it, and burning with curiosity, she ran across the field after it, and fortunately was just in time to see it pop down a large rabbit-hole under the hedge.`,
+      },
+      {
+        id: 'alice_ch_02',
+        title: 'Chapter 2: The Pool of Tears',
+        trackId: 'alice_02',
+        content: `“Curiouser and curiouser!” cried Alice (she was so much surprised, that for the moment she quite forgot how to speak good English); “now I’m opening out like the largest telescope that ever was! Good-bye, feet!” (for when she looked down at her feet, they seemed to be almost out of sight, they were getting so far off). “Oh, my poor little feet, I wonder who will put on your shoes and stockings for you now, dears? I’m sure I shan’t be able! I shall be a great deal too far off to trouble myself about you: you must manage the best way you can;—but I must be kind to them,” thought Alice, “or perhaps they won’t walk the way I want to go! Let me see: I’ll give them a new pair of boots every Christmas.”
+
+And she went on planning to herself how she would manage it. “They must go by the carrier,” she thought; “and how funny it’ll seem, sending presents to one’s own feet! And how odd the directions will look!”`,
+      },
+    ],
+  },
 };
+
+/**
+ * Resolves curated classic ebook chapters by book ID, Gutenberg ID, or title matching.
+ */
+export function findClassicEbook(book: { id?: string; title?: string; gutenbergId?: number }): { gutenbergId?: number; chapters: EbookChapter[] } | null {
+  if (!book) return null;
+
+  // 1. Direct ID match
+  if (book.id && CLASSIC_EBOOKS[book.id]) {
+    return CLASSIC_EBOOKS[book.id];
+  }
+
+  // 2. Gutenberg ID match
+  if (book.gutenbergId) {
+    const found = Object.values(CLASSIC_EBOOKS).find((item) => item.gutenbergId === book.gutenbergId);
+    if (found) return found;
+  }
+
+  // 3. Title matching
+  const title = (book.title || '').toLowerCase();
+  if (title) {
+    if (title.includes('sherlock')) return CLASSIC_EBOOKS['47'];
+    if (title.includes('pride and prejudice') || title.includes('prejudice')) return CLASSIC_EBOOKS['12'];
+    if (title.includes('frankenstein')) return CLASSIC_EBOOKS['52'];
+    if (title.includes('time machine')) return CLASSIC_EBOOKS['19'];
+    if (title.includes('dorian gray')) return CLASSIC_EBOOKS['25'];
+    if (title.includes('metamorphosis')) return CLASSIC_EBOOKS['88'];
+    if (title.includes('dracula')) return CLASSIC_EBOOKS['150'] || CLASSIC_EBOOKS['17'];
+    if (title.includes('jekyll') || title.includes('hyde')) return CLASSIC_EBOOKS['42'];
+    if (title.includes('tell-tale') || title.includes('amontillado') || title.includes('edgar allan poe')) return CLASSIC_EBOOKS['108'];
+    if (title.includes('leaves of grass') || title.includes('whitman')) return CLASSIC_EBOOKS['201'];
+    if (title.includes('alice')) return CLASSIC_EBOOKS['11'];
+  }
+
+  return null;
+}
 
 export async function getEbookCloudUrl(title: string): Promise<string | null> {
   try {
-    const cleanTitle = (title || '').toLowerCase().trim();
-    const searchUrl = `/api/gutenberg/search?q=${encodeURIComponent(cleanTitle)}`;
-    const res = await fetch(searchUrl);
-    if (res.ok) {
-      const gutData = await res.json();
-      if (gutData.results && gutData.results.length > 0) {
-        const topMatch = gutData.results[0];
-        // Prefer HTML format for web reading, fallback to plain text
-        const webUrl =
-          topMatch.formats['text/html'] ||
-          topMatch.formats['text/plain; charset=utf-8'] ||
-          topMatch.formats['text/plain; charset=us-ascii'] ||
-          topMatch.formats['text/plain'];
-        if (webUrl) {
-          return webUrl;
+    const rawTitle = (title || '').trim();
+    // Clean up title: strip subtitle, edition, version tags
+    const cleanTitle = rawTitle
+      .replace(/\s*\(.*?\)/g, '')
+      .replace(/\s*\[.*?\]/g, '')
+      .replace(/,\s*or\s+.*$/i, '')
+      .replace(/:\s*.*$/, '')
+      .trim();
+
+    const searchCandidates = [cleanTitle, rawTitle];
+
+    for (const q of searchCandidates) {
+      if (!q) continue;
+      const searchUrl = `/api/gutenberg/search?q=${encodeURIComponent(q)}`;
+      const res = await fetch(searchUrl);
+      if (res.ok) {
+        const gutData = await res.json();
+        if (gutData.results && gutData.results.length > 0) {
+          const topMatch = gutData.results[0];
+          // Prefer HTML format for web reading, fallback to plain text
+          const webUrl =
+            topMatch.formats['text/html'] ||
+            topMatch.formats['text/html; charset=utf-8'] ||
+            topMatch.formats['text/plain; charset=utf-8'] ||
+            topMatch.formats['text/plain; charset=us-ascii'] ||
+            topMatch.formats['text/plain'];
+          if (webUrl) {
+            return webUrl;
+          }
         }
       }
     }
@@ -266,4 +480,5 @@ export async function getEbookCloudUrl(title: string): Promise<string | null> {
   }
   return null;
 }
+
 

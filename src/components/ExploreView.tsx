@@ -111,8 +111,9 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     let isMounted = true;
 
     if (selectedGenre.id === 'all') {
-      setGenreBooks(books);
-      checkStatusForBooks(books);
+      const uniqueBooks = Array.from(new Map(books.map(b => [b.title, b])).values());
+      setGenreBooks(uniqueBooks);
+      checkStatusForBooks(uniqueBooks);
       return;
     }
 
@@ -121,14 +122,16 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       try {
         const fetched = await fetchLibriVoxCategory(selectedGenre.query, 10);
         if (isMounted && fetched.length > 0) {
-          setGenreBooks(fetched);
-          checkStatusForBooks(fetched);
+          const uniqueFetched = Array.from(new Map(fetched.map(b => [b.title, b])).values());
+          setGenreBooks(uniqueFetched);
+          checkStatusForBooks(uniqueFetched);
         }
       } catch (err) {
         console.warn(`Genre fetch error for ${selectedGenre.label}:`, err);
         if (isMounted) {
-          setGenreBooks(books);
-          checkStatusForBooks(books);
+          const uniqueBooks = Array.from(new Map(books.map(b => [b.title, b])).values());
+          setGenreBooks(uniqueBooks);
+          checkStatusForBooks(uniqueBooks);
         }
       } finally {
         if (isMounted) setIsLoadingGenre(false);
@@ -274,39 +277,46 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       {/* Jump Back In / History */}
       {history.length > 0 && (
         <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <h3 className="text-sm font-semibold text-white/70 uppercase tracking-wider mb-3 px-1 flex items-center gap-2">
-            Jump Back In
-          </h3>
-          <div
-            onClick={() => handleBookClick(history[0])}
-            className="flex items-center gap-4 p-3 sm:p-4 rounded-xl bg-[#111111] hover:bg-[#1a1a1a] border border-white/5 transition-all cursor-pointer group"
-          >
-            <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden bg-[#1a1a1a]">
-              <img
-                src={history[0].coverImageUrl}
-                alt={history[0].title}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                referrerPolicy="no-referrer"
-              />
-            </div>
-            <div className="flex-1 min-w-0">
-              <span className="text-[10px] font-medium text-[#C5A059] uppercase tracking-wider">
-                Continue Listening
-              </span>
-              <h4 className="text-sm font-serif-display italic font-semibold text-white truncate group-hover:text-[#C5A059] transition-colors">
-                {history[0].title}
-              </h4>
-              <p className="text-xs text-white/50 truncate">{history[0].author}</p>
-            </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleBookClick(history[0]);
-              }}
-              className="w-10 h-10 rounded-full bg-[#C5A059] text-black flex items-center justify-center shadow-lg shadow-[#C5A059]/20 group-hover:scale-105 transition-transform shrink-0"
-            >
-              <Play className="w-4 h-4 fill-current ml-0.5" />
-            </button>
+          <div className="flex items-center justify-between mb-3 px-1">
+            <h3 className="text-base font-serif-display italic font-semibold text-white tracking-wide">
+              Jump Back In
+            </h3>
+            <span className="text-xs text-white/40 font-mono">
+              Recently Active
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {Array.from(new Map(history.map(b => [b.id, b])).values()).slice(0, 6).map((book) => (
+              <div
+                key={`jump-${book.id}`}
+                onClick={() => handleBookClick(book)}
+                className="flex items-center gap-3 p-3 rounded-xl bg-[#111111] hover:bg-[#1a1a1a] border border-white/[0.07] hover:border-[#C5A059]/40 transition-all cursor-pointer group shadow-md"
+              >
+                <div className="w-12 h-16 shrink-0 rounded-lg overflow-hidden bg-[#1a1a1a] border border-white/10">
+                  <img
+                    src={book.coverImageUrl}
+                    alt={book.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs font-serif-display italic font-semibold text-white truncate group-hover:text-[#C5A059] transition-colors">
+                    {book.title}
+                  </h4>
+                  <p className="text-[11px] text-white/50 truncate mt-0.5">{book.author}</p>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleBookClick(book);
+                  }}
+                  className="w-8 h-8 rounded-full bg-[#C5A059] text-black flex items-center justify-center shadow-md group-hover:scale-105 transition-transform shrink-0"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}
