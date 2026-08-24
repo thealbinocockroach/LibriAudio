@@ -52,6 +52,11 @@ import {
   formatBytes,
 } from '../utils/offlineStorage';
 import {
+  saveEbookPosition,
+  getEbookPosition,
+  setBookStatus,
+} from '../utils/audioPositionTracker';
+import {
   recordTrueReadingTime,
   recordReadingSession,
   formatTrueDuration,
@@ -174,14 +179,34 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
   const articleRef = useRef<HTMLElement>(null);
   const sessionStartRef = useRef<number>(Date.now());
   const sessionSecondsRef = useRef<number>(0);
-  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastFlushedSecondsRef = useRef<number>(0);
+  const targetScrollPercentageRef = useRef<number>(0);
+  const isRestoringPositionRef = useRef<boolean>(false);
 
-  // Sync currentBook when prop changes
+  // Sync currentBook when prop changes and restore saved reading position
   useEffect(() => {
     setCurrentBook(book);
-    setCurrentChapterIndex(0);
-  }, [book]);
+    if (!isOpen) return;
+
+    // Check saved reading position from persistent storage
+    const saved = getEbookPosition(book.id);
+    if (saved && saved.chapterIndex >= 0) {
+      setCurrentChapterIndex(saved.chapterIndex);
+      targetScrollPercentageRef.current = saved.scrollPercentage || 0;
+      isRestoringPositionRef.current = true;
+    } else {
+      getOfflineEbook(book.id).then((stored) => {
+        if (stored && stored.lastReadChapterIndex !== undefined) {
+          setCurrentChapterIndex(stored.lastReadChapterIndex);
+          targetScrollPercentageRef.current = stored.lastScrollPercentage || 0;
+          isRestoringPositionRef.current = true;
+        } else {
+          setCurrentChapterIndex(0);
+          targetScrollPercentageRef.current = 0;
+        }
+      });
+    }
+  }, [book.id, isOpen]);
 
   // Load Annotations & Bookmarks from localStorage
   useEffect(() => {
@@ -419,24 +444,46 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
     };
   }, [currentBook.id, currentChapterIndex, isOpen]);
 
-  // Scroll to top when chapter changes
+  // Scroll restoration or scroll to top when chapter changes
   useEffect(() => {
-    if (contentContainerRef.current) {
-      contentContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    if (!contentContainerRef.current || !htmlContent) return;
+
+    if (targetScrollPercentageRef.current > 0) {
+      const pct = targetScrollPercentageRef.current;
+      const timer = setTimeout(() => {
+        if (contentContainerRef.current) {
+          const { scrollHeight, clientHeight } = contentContainerRef.current;
+          const maxScroll = scrollHeight - clientHeight;
+          if (maxScroll > 0) {
+            contentContainerRef.current.scrollTop = (maxScroll * pct) / 100;
+          }
+        }
+        targetScrollPercentageRef.current = 0;
+        isRestoringPositionRef.current = false;
+      }, 120);
+      return () => clearTimeout(timer);
+    } else if (!isRestoringPositionRef.current) {
+      contentContainerRef.current.scrollTo({ top: 0, behavior: 'auto' });
     }
-  }, [currentChapterIndex]);
+  }, [currentChapterIndex, htmlContent]);
 
   // Track scroll reading progress
   const handleScroll = () => {
     if (!contentContainerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = contentContainerRef.current;
     const maxScroll = scrollHeight - clientHeight;
-    if (maxScroll <= 0) {
-      setScrollProgress(100);
-    } else {
-      const progress = Math.min(100, Math.max(0, Math.round((scrollTop / maxScroll) * 100)));
-      setScrollProgress(progress);
-    }
+    const progress =
+      maxScroll <= 0 ? 100 : Math.min(100, Math.max(0, Math.round((scrollTop / maxScroll) * 100)));
+    setScrollProgress(progress);
+
+    saveEbookPosition(
+      currentBook.id,
+      currentChapterIndex,
+      progress,
+      currentBook.ebookChapters?.length || 1
+    );
+    updateEbookReadingPosition(currentBook.id, currentChapterIndex, progress);
+
     // Dismiss floating selection on active scroll
     if (selectionMenu) setSelectionMenu(null);
     if (activeHighlightPopup) setActiveHighlightPopup(null);
@@ -777,6 +824,72 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
     }
   }, [htmlContent, annotations, currentChapterIndex, searchQuery]);
 
+  // Compute Cross-Chapter Search Results with Context Snippets
+  const crossChapterSearchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q || q.length < 2) return [];
+
+    const results: {
+      chapterIndex: number;
+      chapterTitle: string;
+      matches: {
+        snippet: string;
+        before: string;
+        match: string;
+        after: string;
+      }[];
+    }[] = [];
+
+    const chapters =
+      currentBook.ebookChapters && currentBook.ebookChapters.length > 0
+        ? currentBook.ebookChapters
+        : [{ id: '1', title: currentBook.title, content: htmlContent || '' }];
+
+    chapters.forEach((ch, chIdx) => {
+      // Strip HTML tags for clean text indexing
+      const cleanText = (ch.content || '')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const lowerText = cleanText.toLowerCase();
+
+      const chapterMatches: {
+        snippet: string;
+        before: string;
+        match: string;
+        after: string;
+      }[] = [];
+
+      let matchPos = lowerText.indexOf(q);
+      while (matchPos !== -1 && chapterMatches.length < 15) {
+        const start = Math.max(0, matchPos - 35);
+        const end = Math.min(cleanText.length, matchPos + q.length + 45);
+        const before = (start > 0 ? '...' : '') + cleanText.substring(start, matchPos);
+        const match = cleanText.substring(matchPos, matchPos + q.length);
+        const after =
+          cleanText.substring(matchPos + q.length, end) + (end < cleanText.length ? '...' : '');
+        const snippet = `${before}${match}${after}`;
+
+        chapterMatches.push({ snippet, before, match, after });
+        matchPos = lowerText.indexOf(q, matchPos + q.length);
+      }
+
+      if (chapterMatches.length > 0) {
+        results.push({
+          chapterIndex: chIdx,
+          chapterTitle: ch.title || `Chapter ${chIdx + 1}`,
+          matches: chapterMatches,
+        });
+      }
+    });
+
+    return results;
+  }, [searchQuery, currentBook.ebookChapters, htmlContent, currentBook.title]);
+
+  const totalSearchMatches = useMemo(() => {
+    return crossChapterSearchResults.reduce((sum, res) => sum + res.matches.length, 0);
+  }, [crossChapterSearchResults]);
+
   // Click on Highlight in Text to open mini action card
   const handleContentClick = (e: React.MouseEvent) => {
     const target = (e.target as HTMLElement).closest('.libriaudio-hl');
@@ -1045,40 +1158,7 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
           id="reader-content-scroll"
           onScroll={handleScroll}
           onMouseUp={handleTextSelection}
-          onTouchStart={(e) => {
-            const touch = e.touches[0];
-            touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-          }}
-          onTouchEnd={(e) => {
-            handleTextSelection();
-            if (!touchStartRef.current) return;
-            const touch = e.changedTouches[0];
-            const deltaX = touch.clientX - touchStartRef.current.x;
-            const deltaY = touch.clientY - touchStartRef.current.y;
-            const deltaTime = Date.now() - touchStartRef.current.time;
-            touchStartRef.current = null;
-
-            // If it's a tap (short duration, minimal movement), toggle chapters sidebar
-            if (Math.abs(deltaX) < 15 && Math.abs(deltaY) < 15 && deltaTime < 300) {
-              const width = window.innerWidth;
-              // If tapped on left edge (outer 25%), go prev or toggle TOC. If right edge, go next.
-              // User requirement: "remove the previous and next options just let me touch it then it will toggle the chapters then i jump there"
-              setActiveSidebarTab(activeSidebarTab === 'chapters' ? null : 'chapters');
-              return;
-            }
-
-            // Horizontal Swipe for Chapter Navigation
-            if (Math.abs(deltaX) > 60 && Math.abs(deltaY) < Math.abs(deltaX) && currentBook.ebookChapters && currentBook.ebookChapters.length > 1) {
-              const isNatural = settings.swipeDirection !== 'reversed';
-              // Natural: swipe left (deltaX < 0) -> next chapter, swipe right (deltaX > 0) -> prev chapter
-              const goNext = isNatural ? deltaX < 0 : deltaX > 0;
-              if (goNext && currentChapterIndex < currentBook.ebookChapters.length - 1) {
-                setCurrentChapterIndex((prev) => prev + 1);
-              } else if (!goNext && currentChapterIndex > 0) {
-                setCurrentChapterIndex((prev) => prev - 1);
-              }
-            }
-          }}
+          onTouchEnd={handleTextSelection}
           onClick={handleContentClick}
           className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-black/20 pb-32 transition-all relative"
         >
@@ -1145,6 +1225,64 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
                   }}
                   dangerouslySetInnerHTML={{ __html: processedHtmlContent }}
                 />
+
+                {/* Chapter Navigation Footer at bottom of chapter text */}
+                {currentBook.ebookChapters && currentBook.ebookChapters.length > 1 && (
+                  <div className="mt-16 pt-8 border-t border-white/10 font-sans">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                      {currentChapterIndex > 0 ? (
+                        <button
+                          onClick={() => {
+                            setCurrentChapterIndex(currentChapterIndex - 1);
+                            targetScrollPercentageRef.current = 0;
+                            contentContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className="w-full sm:w-auto px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs flex items-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <ChevronLeft className="w-4 h-4 text-[#C5A059]" />
+                          <div className="text-left">
+                            <span className="text-[10px] opacity-60 block uppercase">Previous Chapter</span>
+                            <span className="font-semibold truncate max-w-[200px] block">
+                              {currentBook.ebookChapters[currentChapterIndex - 1]?.title}
+                            </span>
+                          </div>
+                        </button>
+                      ) : (
+                        <div />
+                      )}
+
+                      {currentChapterIndex < currentBook.ebookChapters.length - 1 ? (
+                        <button
+                          onClick={() => {
+                            setCurrentChapterIndex(currentChapterIndex + 1);
+                            targetScrollPercentageRef.current = 0;
+                            contentContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className="w-full sm:w-auto px-4 py-3 rounded-xl bg-[#C5A059] hover:bg-[#d4af65] text-black font-semibold text-xs flex items-center justify-between gap-2 transition-colors shadow-lg cursor-pointer ml-auto"
+                        >
+                          <div className="text-right">
+                            <span className="text-[10px] opacity-80 block uppercase">Next Chapter</span>
+                            <span className="truncate max-w-[200px] block">
+                              {currentBook.ebookChapters[currentChapterIndex + 1]?.title}
+                            </span>
+                          </div>
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setBookStatus(currentBook.id, 'read');
+                            saveEbookPosition(currentBook.id, currentChapterIndex, 100, currentBook.ebookChapters?.length || 1);
+                          }}
+                          className="w-full sm:w-auto px-5 py-3 rounded-xl bg-green-500/20 hover:bg-green-500/30 text-green-300 border border-green-500/30 font-semibold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer ml-auto"
+                        >
+                          <CheckCircle2 className="w-4 h-4 text-green-400" />
+                          <span>Finished Book</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -1315,11 +1453,12 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Search text in manuscript..."
                       className="w-full pl-9 pr-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs focus:outline-none focus:border-[#C5A059]"
+                      autoFocus
                     />
                     {searchQuery && (
                       <button
                         onClick={() => setSearchQuery('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 opacity-50 hover:opacity-100"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 opacity-50 hover:opacity-100 cursor-pointer"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -1327,17 +1466,67 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
                   </div>
 
                   {searchQuery.trim().length > 1 ? (
-                    <div className="text-xs opacity-75 space-y-2">
-                      <p className="text-[11px] text-[#C5A059] font-medium">
-                        Search matches are highlighted in orange across the chapter.
-                      </p>
-                      <p className="text-[11px] opacity-60">
-                        Scroll through the chapter to read the highlighted occurrences in full context.
-                      </p>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-xs pb-2 border-b border-white/10">
+                        <span className="text-[#C5A059] font-medium">
+                          {totalSearchMatches} {totalSearchMatches === 1 ? 'match' : 'matches'} found
+                        </span>
+                        <span className="opacity-60 text-[11px]">
+                          across {crossChapterSearchResults.length} {crossChapterSearchResults.length === 1 ? 'chapter' : 'chapters'}
+                        </span>
+                      </div>
+
+                      {crossChapterSearchResults.length === 0 ? (
+                        <div className="text-center py-10 opacity-60 text-xs space-y-1">
+                          <p className="font-semibold text-white/80">No matches found</p>
+                          <p className="text-[11px] opacity-60">Try searching for a different word or phrase.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                          {crossChapterSearchResults.map((chRes) => (
+                            <div
+                              key={chRes.chapterIndex}
+                              className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-2"
+                            >
+                              <div className="flex items-center justify-between text-[11px] font-semibold text-[#C5A059]">
+                                <span className="truncate pr-2">{chRes.chapterTitle}</span>
+                                <span className="px-1.5 py-0.5 rounded bg-[#C5A059]/20 text-[10px] font-mono shrink-0">
+                                  {chRes.matches.length}
+                                </span>
+                              </div>
+
+                              <div className="space-y-1.5">
+                                {chRes.matches.map((m, mIdx) => (
+                                  <button
+                                    key={mIdx}
+                                    onClick={() => {
+                                      setCurrentChapterIndex(chRes.chapterIndex);
+                                      setActiveSidebarTab(null);
+                                      setTimeout(() => {
+                                        const matchEl = document.querySelector('.libriaudio-search-match');
+                                        if (matchEl) {
+                                          matchEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                        }
+                                      }, 200);
+                                    }}
+                                    className="w-full text-left p-2 rounded-lg bg-black/20 hover:bg-[#C5A059]/15 border border-transparent hover:border-[#C5A059]/30 text-[11px] leading-relaxed transition-all block cursor-pointer"
+                                  >
+                                    <span className="opacity-70">{m.before}</span>
+                                    <mark className="bg-[#C5A059] text-black font-semibold px-1 rounded-sm mx-0.5">
+                                      {m.match}
+                                    </mark>
+                                    <span className="opacity-70">{m.after}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="text-center py-10 opacity-50 text-xs">
-                      Type keywords or phrases above to search instantly.
+                      Type keywords or phrases above to search instantly across all chapters.
                     </div>
                   )}
                 </div>
@@ -1843,12 +2032,12 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
 
 
       {/* Bottom Essentials & Chapter Navigation Bar */}
-      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-[#121212]/95 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10 shadow-2xl text-white font-sans text-xs z-30">
+      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#121212]/95 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-white/10 shadow-2xl text-white font-sans text-xs z-30 max-w-[95vw] overflow-x-auto scrollbar-none">
         {/* Table of Contents */}
         <button
           id="btn-reader-bottom-toc"
           onClick={() => setActiveSidebarTab(activeSidebarTab === 'chapters' ? null : 'chapters')}
-          className={`p-2 rounded-xl border transition-all ${
+          className={`p-2 rounded-xl border transition-all cursor-pointer ${
             activeSidebarTab === 'chapters'
               ? 'bg-[#C5A059] text-black border-[#C5A059]'
               : 'border-transparent hover:bg-white/10 text-white/80'
@@ -1858,13 +2047,11 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
           <List className="w-4 h-4" />
         </button>
 
-        <div className="h-4 w-px bg-white/10 mx-0.5" />
-
         {/* Highlights & Notes */}
         <button
           id="btn-reader-bottom-highlights"
           onClick={() => setActiveSidebarTab(activeSidebarTab === 'highlights' ? null : 'highlights')}
-          className={`p-2 rounded-xl border relative transition-all ${
+          className={`p-2 rounded-xl border relative transition-all cursor-pointer ${
             activeSidebarTab === 'highlights'
               ? 'bg-[#C5A059] text-black border-[#C5A059]'
               : 'border-transparent hover:bg-white/10 text-white/80'
@@ -1883,7 +2070,7 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
         <button
           id="btn-reader-bottom-bookmark"
           onClick={handleAddBookmark}
-          className={`p-2 rounded-xl border transition-all ${
+          className={`p-2 rounded-xl border transition-all cursor-pointer ${
             activeSidebarTab === 'bookmarks'
               ? 'bg-[#C5A059] text-black border-[#C5A059]'
               : 'border-transparent hover:bg-white/10 text-white/80'
@@ -1897,7 +2084,7 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
         <button
           id="btn-reader-bottom-settings"
           onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
-          className={`p-2 rounded-xl border transition-all ${
+          className={`p-2 rounded-xl border transition-all cursor-pointer ${
             showSettingsDropdown
               ? 'bg-white/20 border-white/20'
               : 'border-transparent hover:bg-white/10 text-white/80'
@@ -1913,21 +2100,21 @@ export const GutenbergReaderModal: React.FC<GutenbergReaderModalProps> = ({
             <div className="h-4 w-px bg-white/10 mx-0.5" />
             <button
               onClick={onRewind15}
-              className="p-1.5 rounded-full hover:bg-white/10 text-white/80 transition-colors"
+              className="p-1.5 rounded-full hover:bg-white/10 text-white/80 transition-colors cursor-pointer"
               title="Rewind 15s"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
             <button
               onClick={onTogglePlayPause}
-              className="p-2 rounded-full bg-[#C5A059] text-black hover:bg-[#d4af65] transition-all shadow-md active:scale-95"
+              className="p-2 rounded-full bg-[#C5A059] text-black hover:bg-[#d4af65] transition-all shadow-md active:scale-95 cursor-pointer"
               title={playerState?.isPlaying ? 'Pause Audiobook' : 'Play Audiobook'}
             >
               {playerState?.isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
             </button>
             <button
               onClick={onForward30}
-              className="p-1.5 rounded-full hover:bg-white/10 text-white/80 transition-colors"
+              className="p-1.5 rounded-full hover:bg-white/10 text-white/80 transition-colors cursor-pointer"
               title="Forward 30s"
             >
               <RotateCcw className="w-4 h-4 scale-x-[-1]" />

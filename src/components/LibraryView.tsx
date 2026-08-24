@@ -79,6 +79,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [historySubTab, setHistorySubTab] = useState<'reading' | 'audio'>('reading');
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [offlineSubTab, setOfflineSubTab] = useState<'audiobooks' | 'ebooks'>('audiobooks');
+  const [offlineEbooks, setOfflineEbooks] = useState<any[]>([]);
+  const [readingSessions, setReadingSessions] = useState<any[]>([]);
 
   const toggleSelect = (bookId: string) => {
     const newSelected = new Set(selectedIds);
@@ -91,10 +94,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   };
 
   const deleteSelected = async () => {
-    await Promise.all(Array.from(selectedIds).map(id => deleteDownloadedBook(id)));
+    await Promise.all(Array.from(selectedIds).map((id) => deleteDownloadedBook(String(id))));
     setSelectedIds(new Set());
     setIsSelectMode(false);
-    refreshOfflineEbooks(); 
+    refreshOfflineEbooks();
   };
 
   // Function to sort books by last visited time

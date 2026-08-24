@@ -34,6 +34,10 @@ export interface Audiobook {
   gutenbergId?: number;
   ebookUrl?: string;
   ebookChapters?: EbookChapter[];
+  status?: 'reading' | 'read' | 'unread';
+  lastVisited?: number;
+  lastPlayedTrackIndex?: number;
+  lastPlayedPositionSecs?: number;
 }
 
 export interface EbookReaderSettings {

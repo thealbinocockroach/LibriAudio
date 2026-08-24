@@ -430,6 +430,232 @@ export function formatTrueDurationShort(seconds: number): string {
   return `${Math.floor(seconds)}s`;
 }
 
+export interface TimeOfDayDistribution {
+  morningMins: number; // 6:00 - 12:00
+  afternoonMins: number; // 12:00 - 18:00
+  eveningMins: number; // 18:00 - 22:00
+  nightMins: number; // 22:00 - 6:00
+  morningPercent: number;
+  afternoonPercent: number;
+  eveningPercent: number;
+  nightPercent: number;
+  peakPeriod: 'Morning' | 'Afternoon' | 'Evening' | 'Night';
+}
+
+/**
+ * Calculate Time of Day listening breakdown
+ */
+export function getTimeOfDayDistribution(): TimeOfDayDistribution {
+  let morningSecs = 0;
+  let afternoonSecs = 0;
+  let eveningSecs = 0;
+  let nightSecs = 0;
+
+  const sessions = memoryDb.readingSessions || [];
+  if (sessions.length > 0) {
+    sessions.forEach((s) => {
+      const hour = new Date(s.startTimestamp || s.endTimestamp).getHours();
+      const dur = s.durationSeconds || 0;
+      if (hour >= 6 && hour < 12) {
+        morningSecs += dur;
+      } else if (hour >= 12 && hour < 18) {
+        afternoonSecs += dur;
+      } else if (hour >= 18 && hour < 22) {
+        eveningSecs += dur;
+      } else {
+        nightSecs += dur;
+      }
+    });
+  }
+
+  // Also factor in book activities
+  Object.values(memoryDb.books).forEach((b) => {
+    if (b.lastListenTimestamp) {
+      const hour = new Date(b.lastListenTimestamp).getHours();
+      const weight = Math.min(b.trueListenedSeconds || 0, 1800);
+      if (hour >= 6 && hour < 12) morningSecs += weight * 0.3;
+      else if (hour >= 12 && hour < 18) afternoonSecs += weight * 0.3;
+      else if (hour >= 18 && hour < 22) eveningSecs += weight * 0.3;
+      else nightSecs += weight * 0.3;
+    }
+  });
+
+  const total = morningSecs + afternoonSecs + eveningSecs + nightSecs || 1;
+  const morningPercent = Math.round((morningSecs / total) * 100);
+  const afternoonPercent = Math.round((afternoonSecs / total) * 100);
+  const eveningPercent = Math.round((eveningSecs / total) * 100);
+  const nightPercent = Math.max(0, 100 - (morningPercent + afternoonPercent + eveningPercent));
+
+  let peakPeriod: 'Morning' | 'Afternoon' | 'Evening' | 'Night' = 'Evening';
+  const max = Math.max(morningSecs, afternoonSecs, eveningSecs, nightSecs);
+  if (max === morningSecs) peakPeriod = 'Morning';
+  else if (max === afternoonSecs) peakPeriod = 'Afternoon';
+  else if (max === eveningSecs) peakPeriod = 'Evening';
+  else peakPeriod = 'Night';
+
+  return {
+    morningMins: Math.round(morningSecs / 60),
+    afternoonMins: Math.round(afternoonSecs / 60),
+    eveningMins: Math.round(eveningSecs / 60),
+    nightMins: Math.round(nightSecs / 60),
+    morningPercent,
+    afternoonPercent,
+    eveningPercent,
+    nightPercent,
+    peakPeriod,
+  };
+}
+
+export interface ListeningMilestone {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  unlocked: boolean;
+  progressPercent: number;
+  currentValue: string;
+  targetValue: string;
+  unlockedDate?: string;
+}
+
+/**
+ * Evaluate all user listening milestones and achievement badges
+ */
+export function getListeningMilestones(historyBooks: Audiobook[] = []): ListeningMilestone[] {
+  const summary = getOverallActivitySummary();
+  const listenedHours = summary.totalListenedSeconds / 3600;
+  const readHours = summary.totalReadSeconds / 3600;
+  const totalHours = summary.totalCombinedSeconds / 3600;
+  const streak = summary.dailyStreak;
+  const booksCount = summary.booksStartedCount || historyBooks.length;
+  const timeOfDay = getTimeOfDayDistribution();
+
+  return [
+    {
+      id: 'first_play',
+      title: 'First Melody',
+      description: 'Start listening to your first classic audiobook',
+      icon: '🎵',
+      unlocked: summary.totalListenedSeconds > 30,
+      progressPercent: Math.min(100, Math.round((summary.totalListenedSeconds / 30) * 100)),
+      currentValue: `${Math.min(30, Math.round(summary.totalListenedSeconds))}s`,
+      targetValue: '30s',
+    },
+    {
+      id: 'golden_ear',
+      title: 'Golden Ear',
+      description: 'Complete 1 hour of active audiobook listening',
+      icon: '🎧',
+      unlocked: listenedHours >= 1.0,
+      progressPercent: Math.min(100, Math.round((listenedHours / 1.0) * 100)),
+      currentValue: `${listenedHours.toFixed(1)}h`,
+      targetValue: '1.0h',
+    },
+    {
+      id: 'deep_diver',
+      title: 'Deep Immersion',
+      description: 'Reach 5 hours of total audio and reading time',
+      icon: '🌊',
+      unlocked: totalHours >= 5.0,
+      progressPercent: Math.min(100, Math.round((totalHours / 5.0) * 100)),
+      currentValue: `${totalHours.toFixed(1)}h`,
+      targetValue: '5.0h',
+    },
+    {
+      id: 'streak_enthusiast',
+      title: 'Patience & Habit',
+      description: 'Maintain a 3-day continuous listening streak',
+      icon: '🔥',
+      unlocked: streak >= 3,
+      progressPercent: Math.min(100, Math.round((streak / 3) * 100)),
+      currentValue: `${streak} days`,
+      targetValue: '3 days',
+    },
+    {
+      id: 'multi_modalist',
+      title: 'Multi-Modal Scholar',
+      description: 'Engage with both Audiobooks and Ebooks in the app',
+      icon: '✨',
+      unlocked: summary.totalListenedSeconds > 60 && summary.totalReadSeconds > 60,
+      progressPercent:
+        summary.totalListenedSeconds > 0 && summary.totalReadSeconds > 0
+          ? 100
+          : summary.totalListenedSeconds > 0 || summary.totalReadSeconds > 0
+          ? 50
+          : 0,
+      currentValue:
+        summary.totalListenedSeconds > 60 && summary.totalReadSeconds > 60 ? 'Completed' : 'Partial',
+      targetValue: 'Audio + Text',
+    },
+    {
+      id: 'night_owl',
+      title: 'Bedtime Wanderer',
+      description: 'Log listening sessions late into the evening or night',
+      icon: '🌙',
+      unlocked: timeOfDay.nightMins > 10 || timeOfDay.eveningMins > 20,
+      progressPercent: Math.min(
+        100,
+        Math.round(((timeOfDay.nightMins + timeOfDay.eveningMins) / 30) * 100)
+      ),
+      currentValue: `${timeOfDay.nightMins + timeOfDay.eveningMins}m`,
+      targetValue: '30m Night',
+    },
+    {
+      id: 'library_collector',
+      title: 'Literary Explorer',
+      description: 'Explore and start 3 or more distinctive literary works',
+      icon: '📚',
+      unlocked: booksCount >= 3,
+      progressPercent: Math.min(100, Math.round((booksCount / 3) * 100)),
+      currentValue: `${booksCount} books`,
+      targetValue: '3 books',
+    },
+    {
+      id: 'master_marathoner',
+      title: 'Audio Marathoner',
+      description: 'Log over 10 hours of immersive audiobook listening',
+      icon: '🏆',
+      unlocked: listenedHours >= 10.0,
+      progressPercent: Math.min(100, Math.round((listenedHours / 10.0) * 100)),
+      currentValue: `${listenedHours.toFixed(1)}h`,
+      targetValue: '10h',
+    },
+  ];
+}
+
+/**
+ * Calculate listening pace and daily velocity
+ */
+export function getListeningVelocity(): {
+  dailyAverageMinutes: number;
+  weeklyVelocityHours: number;
+  mostActiveDay: string;
+  projectedMonthlyHours: number;
+} {
+  const summary = getOverallActivitySummary();
+  const recent7 = getLast7DaysActivity();
+  const total7DaysMins = recent7.reduce((sum, d) => sum + d.listenedMins, 0);
+  const dailyAverageMinutes = Math.round(total7DaysMins / 7);
+  const weeklyVelocityHours = parseFloat((total7DaysMins / 60).toFixed(1));
+  const projectedMonthlyHours = parseFloat(((dailyAverageMinutes * 30) / 60).toFixed(1));
+
+  let mostActiveDay = 'Sunday';
+  let maxMins = -1;
+  recent7.forEach((d) => {
+    if (d.listenedMins > maxMins) {
+      maxMins = d.listenedMins;
+      mostActiveDay = d.dayName;
+    }
+  });
+
+  return {
+    dailyAverageMinutes,
+    weeklyVelocityHours,
+    mostActiveDay,
+    projectedMonthlyHours,
+  };
+}
+
 /**
  * Clear or reset all true activity tracking & reading history
  */
